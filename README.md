@@ -29,10 +29,11 @@ after that everything runs offline on your Apple Silicon Mac, your NVIDIA GPU, o
   why, and remembers the choice.
 - **Speaker separation.** `--speakers 2` turns a two-person call into `[00:01:23] Parlante 1: ...` lines.
 - **Context hints.** `--context "Mario Rossi, LoRaWAN"` helps names and jargon come out spelled right.
-- **Word confidence** (Mac). `--confidence` records each word-piece's probability and the model's alternatives (and groups them
-  into words, flagging the unsure ones, which also get whole-word candidates from the
-  speech model), the
-  basis for the upcoming AI correction (see the [roadmap](ROADMAP.md)).
+- **Word confidence** (Mac). `--confidence` saves each word's probability, flags the unsure ones and gives them
+  whole-word alternatives from the speech model itself.
+- **AI suggestions, checked and confirmed** (Mac). `--correct` lets a small local model choose among those
+  alternatives at unsure words. A rule checker, proven correct in [Bend](https://github.com/HigherOrderCO/Bend),
+  rejects anything else, and you accept or reject each suggestion on the review page. Nothing changes on its own.
 - **Review page.** A local page with the editable transcript beside the audio; click a timestamp to jump there.
 - **Double-click launchers** for people who never open a terminal: `Trascrivi.command` and `Rivedi.command` on
   Mac, drag-and-drop onto `transcribe.bat` on Windows.
@@ -67,12 +68,13 @@ bash setup_mac.sh            # 10-20 minutes, once
 
 `setup_mac.sh` checks that the Mac is supported, installs the small helper tool [uv](https://docs.astral.sh/uv/) if
 it is missing (official installer; it says so before doing it), runs the hardware check (press Enter to accept the
-recommended model), creates a Python environment in `.venv`, installs about 1 GB of packages and downloads about 2 GB
+recommended model), creates a Python environment in `.venv`, installs about 1 GB of packages and downloads about 2.4 GB
 of models. `bash setup_mac.sh light` (or `best`, or `both`) skips the question.
 
 Prefer not to use Terminal? **Double-click `Trascrivi.command`** in Finder, pick one or more recordings, and the `.md`
-transcripts appear next to them. The first time, macOS may refuse to open a downloaded script: right-click it, choose
-**Open**, then **Open** again (only once).
+transcripts appear next to them. For a single-speaker transcript it also offers the AI suggestions (`--correct`),
+which you then accept or reject with `Rivedi.command`. The first time, macOS may refuse to open a downloaded script:
+right-click it, choose **Open**, then **Open** again (only once).
 
 ### Windows (NVIDIA GPU or CPU)
 
@@ -106,6 +108,7 @@ timestamp. With `--speakers`, each turn starts with the timestamp and the speake
 | `--device auto`, `cuda`, `mps`, `cpu` | choose the hardware (default: the saved choice). On a Mac `mps` is the Apple GPU |
 | `--batch-size N` | pieces processed together (default: the saved choice, lowered if memory is tight; lower = less memory) |
 | `--confidence` | also save each word-piece's confidence and the model's alternatives, plus per-word `"words"` with an `"unsure"` flag and whole-word `"cands"` for the unsure ones, to `<recording>.review.json` (Apple Silicon only for now) |
+| `--correct` | suggest fixes for unsure words: a small local model (Qwen3-0.6B, downloaded at setup) chooses among the speech model's own alternatives, the Bend checker accepts or rejects each choice, and the accepted ones go to `<recording>.review.json` for the review page. The `.md` is not changed. About 25% slower; implies `--confidence`; Apple Silicon only for now |
 | `--stats` | print the device, model, speed and peak memory at the end |
 | `--chunk 20` | seconds per piece. Leave at 20: longer pieces are measurably less accurate |
 
@@ -116,6 +119,17 @@ Double-click `Rivedi.command` (Mac) and pick the recording, or run
 `.venv\Scripts\python.exe -m localtranscribe.review recording.m4a`). The transcript is on the left and the audio on
 the right; click a timestamp to jump the audio there, edit the text, and press *Salva* to write the `.md` back. The
 page runs only on this computer (127.0.0.1).
+
+If the recording was transcribed with `--correct`, each suggested word is highlighted: *Accetta* swaps it in (still
+written only when you press *Salva*), *Rifiuta* hides the suggestion. A suggestion is offered only while the word is
+still the original one.
+
+How good are the suggestions? The settings were tuned on 100 FLEURS clips and then checked, unchanged, on 200 other
+clips. On those 200, `--correct` made 32 suggestions: 12 fixed a mistake, 3 would have introduced one, and 17 changed
+a wrong word into another wrong word. Accepting all of them would lower the word error rate from 3.77 % to 3.55 %
+(on the tuning clips: 13 suggestions, 5 fixes, 1 new mistake, 3.51 % to 3.35 %). On its own the small model does
+worse than the speech model, so it only breaks ties between the speech model's own guesses, and only about one
+suggestion in three is a real fix: that is why every suggestion waits for you.
 
 ## Models
 
@@ -227,8 +241,9 @@ requirements-windows.txt` (NVIDIA) or `-r requirements-cpu.txt`, then `PYTHONPAT
 
 ## Roadmap
 
-The review page is done. Next: local AI correction that only chooses among the ASR model's own alternatives at
-low-confidence words, guarded by a rule checker and confirmed by you. Details in [ROADMAP.md](ROADMAP.md).
+The review page and a first version of the AI suggestions are done. Next: measure the suggestions on recordings they
+were not tuned on, reach more mistakes, and offer them from the double-click launcher. Details in
+[ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 
@@ -236,10 +251,11 @@ Issues and pull requests are welcome. Before opening one: run the unit tests, ke
 possible (new dependencies are a discussion, not a default), and if you touch the chunker, the prompts or the model
 presets, include `benchmark/bench.py` numbers before and after.
 
-The upcoming AI correction is guarded by a rule checker written in [Bend](https://github.com/HigherOrderCO/Bend):
+The AI suggestions are guarded by a rule checker written in [Bend](https://github.com/HigherOrderCO/Bend):
 `LAWS.bend` states the rules (the maintainer's specification: propose changes to it in an issue first), `guard.bend`
-is the checker, and `PROOF.bend` proves that the checker obeys every rule. If you touch any of them, run
-`bend PROOF.bend`; it must print `ALL PROOFS CHECK`.
+is the checker, `PROOF.bend` proves that the checker obeys every rule, and `guard_cli.bend` is the small
+command-line wrapper that Python calls. If you touch any of them, run `bend PROOF.bend` (it must print
+`ALL PROOFS CHECK`), then `bash build_guard.sh`, which rebuilds `bin/guard-macos-arm64` only when the proofs pass.
 
 ## Troubleshooting
 
@@ -300,17 +316,21 @@ oppure PC Windows (meglio con scheda video NVIDIA). Circa 4 GB di spazio libero 
    la prima volta il Mac può chiedere di installare gli "strumenti da riga di comando": conferma con **Installa**.)
 2. Apri **Terminale** (Cmd+Spazio, scrivi *Terminale*). Scrivi `cd ` (con lo spazio), trascina dentro la cartella del
    progetto e premi Invio.
-3. Scrivi `bash setup_mac.sh` e premi Invio. Ci vogliono 10-20 minuti: scarica programmi e modelli (circa 3 GB in tutto).
+3. Scrivi `bash setup_mac.sh` e premi Invio. Ci vogliono 10-20 minuti: scarica programmi e modelli (circa 3,5 GB in tutto).
    Il programma controlla il computer (memoria, spazio libero) e propone il modello adatto: premi Invio per accettare.
 4. Per sapere quanta memoria ha il tuo Mac: menu Apple  > **Informazioni su questo Mac**. Con 8 GB o più viene usato
    il modello più accurato (misurato su un MacBook Air M2 da 8 GB).
 
 **Uso su Mac.** Doppio clic su **`Trascrivi.command`**. La prima volta, se macOS non lo apre: clic destro sul file,
 **Apri**, poi ancora **Apri**. Scegli uno o più file audio o video; puoi anche far separare due persone che parlano
-(telefonate). Il testo viene salvato accanto a ogni file (stesso nome, estensione `.md`) e compare nel Finder.
+(telefonate). Il testo viene salvato accanto a ogni file (stesso nome, estensione `.md`) e compare nel Finder. Per il
+testo unico il programma chiede anche se vuoi i **suggerimenti AI** per le parole incerte: un piccolo modello sul tuo
+Mac propone correzioni (ci vuole circa un quarto di tempo in più), e nulla cambia finché non le accetti tu.
 
 **Rivedere il testo.** Doppio clic su **`Rivedi.command`** e scegli la registrazione: nel browser vedi il testo a sinistra
-e l'audio a destra. Clicca su un orario per ascoltare quel punto, correggi il testo e premi **Salva**.
+e l'audio a destra. Clicca su un orario per ascoltare quel punto, correggi il testo e premi **Salva**. Se hai chiesto
+i suggerimenti AI, le parole con un suggerimento sono evidenziate: **Accetta** o **Rifiuta**. Nulla cambia finché non
+premi **Salva**. Circa un suggerimento su tre è una vera correzione: controlla sempre ascoltando.
 
 **Consigli per il MacBook Air.** Tienilo **collegato all'alimentazione** per i file lunghi (non ha ventola e rallenta
 quando si scalda). Con 8 GB di memoria **chiudi i programmi pesanti** (browser con molte schede, videochiamate) prima

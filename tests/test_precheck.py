@@ -401,8 +401,8 @@ class DiskTests(Sandbox):
 
     def test_disk_need_matches_the_measured_sizes(self):
         expected = {("nvidia", "best"): 5.0 + 4.7 + 0.4 + 1.0, ("nvidia", "light"): 5.0 + 1.9 + 0.4 + 1.0,
-                    ("cpu", "light"): 1.2 + 1.9 + 0.4 + 1.0, ("mac", "best"): 1.0 + 1.6 + 0.4 + 1.0,
-                    ("mac", "light"): 1.0 + 1.0 + 0.4 + 1.0}
+                    ("cpu", "light"): 1.2 + 1.9 + 0.4 + 1.0, ("mac", "best"): 1.0 + 1.6 + 0.4 + 0.35 + 1.0,
+                    ("mac", "light"): 1.0 + 1.0 + 0.4 + 0.35 + 1.0}
         for (kind, preset), gb in expected.items():
             profile = {"nvidia": pc(gpus=[gpu(24)]), "cpu": pc(), "mac": mac(ram=24)}[kind]
             option = precheck.assess(profile)["options"][preset]

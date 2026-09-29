@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import numpy as np
 
 from . import config
+from .textutil import fmt_time
 
 STAMP = re.compile(r"^\[(\d{2,}):(\d{2}):(\d{2})\] ?")
 MAX_BODY = 20 * 1024 * 1024
@@ -46,6 +47,26 @@ def join_md(paragraphs):
     return "\n\n".join(parts) + "\n"
 
 
+def add_suggestions(paragraphs, sidecar_path):
+    """Add "sugg": [{"i", "from", "to"}] to each paragraph from the .review.json; a bad sidecar means none."""
+    try:
+        with open(sidecar_path, encoding="utf-8") as f:
+            side = {fmt_time(q["offset"]): q for q in json.load(f)["paragraphs"]}
+    except Exception:  # also OverflowError (Infinity offset) and RecursionError (deep JSON)
+        side = {}
+    for p in paragraphs:
+        p["sugg"] = []
+        try:
+            words, have = p["text"].split(), side.get(p["stamp"], {}).get("words") or []
+            for i, w in enumerate(have):
+                if isinstance(w.get("suggest"), str) and w["suggest"] and isinstance(w.get("w"), str) \
+                        and i < len(words) and words[i] == w["w"]:
+                    p["sugg"].append({"i": i, "from": w["w"], "to": w["suggest"]})
+        except Exception:
+            p["sugg"] = []
+    return paragraphs
+
+
 def wav_bytes(samples):
     """float32 mono 16 kHz samples -> in-memory 16-bit PCM WAV."""
     pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2")
@@ -63,6 +84,7 @@ def make_server(audio_bytes, md_path, title, port=0):
     token = secrets.token_urlsafe(16)
     base = f"/{token}/"
     lock = threading.Lock()
+    sidecar = os.path.splitext(md_path)[0] + ".review.json"
     page = PAGE.replace("__TITLE__", html.escape(title)).encode()
 
     class Handler(BaseHTTPRequestHandler):
@@ -94,7 +116,7 @@ def make_server(audio_bytes, md_path, title, port=0):
             elif r == "transcript.json":
                 try:
                     with open(md_path, encoding="utf-8") as f:
-                        data = parse_md(f.read())
+                        data = add_suggestions(parse_md(f.read()), sidecar)
                 except OSError:
                     return self.send(500, b"cannot read the .md file")
                 self.send(200, json.dumps(data).encode(), "application/json")
@@ -208,6 +230,13 @@ audio{width:100%}
 .tx{flex:1;min-width:0;padding:2px 6px;border-radius:6px;white-space:pre-wrap}
 button:focus-visible,.tx:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 .tx:focus{background:var(--panel)}
+.body{flex:1;min-width:0}
+mark{background:#ffe27a;color:#1d1d1f;border-radius:3px;padding:0 2px}
+.sg{font-size:14px;color:var(--mute);margin:2px 6px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sg button{font:inherit;padding:1px 10px;border-radius:6px;border:1px solid var(--acc);background:none;
+  color:var(--acc);cursor:pointer}
+.sg[hidden]{display:none}
+.sg .note{color:#b3261e}
 @media(max-width:800px){main{flex-direction:column-reverse;padding:0 16px 16px}
   aside{width:auto;align-self:stretch;position:sticky;top:0;z-index:1;border-radius:0 0 10px 10px;margin:0 -16px;padding:10px 16px}
   #text{max-width:none}}
@@ -219,6 +248,7 @@ button:focus-visible,.tx:focus-visible{outline:3px solid var(--acc);outline-offs
 <audio id="a" controls src="audio.wav" preload="auto"></audio>
 <button id="save" type="button">Salva</button>
 <p id="status" role="status"></p>
+<p id="count" role="status"></p>
 </aside>
 </main>
 <script>
@@ -227,6 +257,11 @@ const audio = $("a"), status = $("status"), box = $("text");
 let dirty = false;
 function setStatus(s) { status.textContent = s; }
 function markDirty() { dirty = true; setStatus("Modifiche non salvate"); }
+function countOpen() {
+  const n = box.querySelectorAll(".sg:not([hidden])").length;
+  $("count").textContent = n ? n + (n === 1 ? " suggerimento" : " suggerimenti") : "";
+}
+function unwrap(m) { m.replaceWith(document.createTextNode(m.textContent)); }
 function paragraphs() {
   return [...box.querySelectorAll(".p")].map(p => ({stamp: p.dataset.stamp || null, text: p.querySelector(".tx").innerText}));
 }
@@ -255,12 +290,43 @@ function show(items) {
     }
     const t = document.createElement("div");
     t.className = "tx"; t.contentEditable = "plaintext-only";
-    t.textContent = it.text;
+    const sugg = new Map((it.sugg || []).map(g => [g.i, g]));
+    let n = 0;
+    for (const part of it.text.match(/\\S+|\\s+/g) || []) {
+      const g = /\\S/.test(part) ? sugg.get(n++) : null;
+      if (g) { const m = document.createElement("mark"); m.textContent = part; g.mark = m; t.append(m); }
+      else t.append(part);
+    }
     t.oninput = markDirty;
     t.onkeydown = e => { if (e.key === "Enter") e.preventDefault(); };
-    p.append(t);
+    const body = document.createElement("div");
+    body.className = "body";
+    body.append(t);
+    for (const g of sugg.values()) {
+      const row = document.createElement("div");
+      row.className = "sg";
+      const label = document.createElement("span");
+      label.textContent = "\u00ab" + g.from + "\u00bb \u2192 \u00ab" + g.to + "\u00bb";
+      const ok = document.createElement("button"), no = document.createElement("button");
+      ok.type = no.type = "button";
+      ok.textContent = "Accetta"; no.textContent = "Rifiuta";
+      ok.setAttribute("aria-label", "Accetta: " + g.from + " diventa " + g.to);
+      no.setAttribute("aria-label", "Rifiuta il suggerimento per " + g.from);
+      const note = document.createElement("span");
+      note.className = "note";
+      ok.onclick = () => {
+        const m = g.mark;
+        if (!m.isConnected || m.textContent !== g.from) { note.textContent = "testo modificato"; return; }
+        m.textContent = g.to; unwrap(m); row.hidden = true; markDirty(); countOpen();
+      };
+      no.onclick = () => { if (g.mark.isConnected) unwrap(g.mark); row.hidden = true; countOpen(); };
+      row.append(label, ok, no, note);
+      body.append(row);
+    }
+    p.append(body);
     box.append(p);
   }
+  countOpen();
 }
 fetch("transcript.json").then(r => { if (!r.ok) throw 0; return r.json(); }).then(show)
   .catch(() => { box.textContent = "Impossibile caricare la trascrizione (file .md mancante o illeggibile)."; });

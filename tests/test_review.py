@@ -89,6 +89,54 @@ class Server(unittest.TestCase):
             self.assertEqual(f.read(), PLAIN)
 
 
+class Suggestions(Server):
+    def sidecar(self, data):
+        with open(os.path.join(self.dir.name, "r.review.json"), "w", encoding="utf-8") as f:
+            f.write(data if isinstance(data, str) else json.dumps(data))
+
+    def side(self, word="secondo", offset=19.4):
+        words = [{"w": "secondo", "p": 0.4, "unsure": True, "suggest": "secondi"}, {"w": "testo", "p": 0.99}]
+        words[0]["w"] = word
+        return {"version": 1, "paragraphs": [{"text": "x", "offset": offset, "words": words}]}
+
+    def sugg(self):
+        r = self.req("transcript.json")
+        self.assertEqual(r.status, 200)
+        return [p["sugg"] for p in json.load(r)]
+
+    def test_from_sidecar_matched_by_stamp(self):
+        self.sidecar(self.side())
+        self.assertEqual(self.sugg(), [[], [{"i": 0, "from": "secondo", "to": "secondi"}]])
+
+    def test_stale_word_or_other_stamp(self):
+        self.sidecar(self.side(word="terzo"))
+        self.assertEqual(self.sugg(), [[], []])
+        self.sidecar(self.side(offset=5))
+        self.assertEqual(self.sugg(), [[], []])
+
+    def test_missing_or_bad_sidecar(self):
+        self.assertEqual(self.sugg(), [[], []])
+        for bad in ("not json", "[]", '{"paragraphs": 3}', '{"paragraphs": [{"offset": "x"}]}'):
+            self.sidecar(bad)
+            self.assertEqual(self.sugg(), [[], []])
+
+    def test_hostile_sidecar_never_breaks_transcript(self):
+        deep = "[" * 100000 + "]" * 100000
+        bad_word = self.side()
+        bad_word["paragraphs"][0]["words"] = [{"w": "secondo", "suggest": 5}]
+        for bad in ('{"paragraphs": [{"text": "x", "offset": Infinity, "words": []}]}',
+                    '{"paragraphs": ' + deep + "}", json.dumps(bad_word)):
+            self.sidecar(bad)
+            self.assertEqual(self.sugg(), [[], []])
+
+    def test_save_unchanged(self):
+        self.sidecar(self.side())
+        body = json.dumps([{"stamp": "00:00:19", "text": "secondi testo", "sugg": []}]).encode()
+        self.assertEqual(self.req("save", data=body).status, 200)
+        with open(self.md, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "[00:00:19] secondi testo\n")
+
+
 class Main(unittest.TestCase):
     def test_unreadable_audio(self):
         with tempfile.TemporaryDirectory() as d:

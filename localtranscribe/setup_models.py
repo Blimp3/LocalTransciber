@@ -1,6 +1,6 @@
 """Download the models once, so that every later run works fully offline.
 
-    python -m localtranscribe.setup_models [--model auto|best|light|both|<repo id> ...] [--no-diarization]
+    python -m localtranscribe.setup_models [--model auto|best|light|both|<repo id> ...] [--no-diarization] [--no-correct-model]
 """
 import argparse
 import os
@@ -92,6 +92,7 @@ def main(argv=None):
                          "(default: what the hardware check saved, else auto)")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
     ap.add_argument("--no-diarization", action="store_true", help="skip the speaker model used by --speakers")
+    ap.add_argument("--no-correct-model", action="store_true", help="skip the small model used by --correct (Mac only)")
     ap.add_argument("--dry-run", action="store_true", help="only list what would be downloaded")
     args = ap.parse_args(argv)
 
@@ -105,6 +106,8 @@ def main(argv=None):
         repos = resolve_repos(names, device, mem_gb)
         if not args.no_diarization:
             repos.append(config.SPEAKER_MODEL)
+        if device == "mps" and not args.no_correct_model:
+            repos.append(config.CORRECT_MODEL)
         label = {"cuda": "NVIDIA GPU", "mps": "Apple Silicon", "cpu": "CPU"}[device]
         mem = f", {mem_gb:.0f} GB {'VRAM' if device == 'cuda' else 'memory'}" if mem_gb else ""
         print(f"Detected: {label}{mem}")

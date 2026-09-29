@@ -74,12 +74,13 @@ def add_candidates(backend, piece, language, context, para):
 
 
 def transcribe_wav(backend, wav, language, context="", chunk_seconds=config.CHUNK_SECONDS, progress=None,
-                   paragraphs=None) -> str:
+                   paragraphs=None, corrector=None) -> str:
     """Whole recording -> text, one "[hh:mm:ss] ..." paragraph per ~20 s piece. With `paragraphs` (a list), one
     {"text", "offset", "aligned", "tokens", "words"} per paragraph is appended to it (needs a backend with
     record_confidence). "words" is one {"w", "p", "i": [first, last piece], "unsure": True if p is low} per word of
     `text.split()`, or None when the pieces do not line up with the text. Unsure words also get "cands"
-    (see add_candidates) when the backend has word_continuations."""
+    (see add_candidates) when the backend has word_continuations. `corrector(para)`, if given, then adds "suggest"
+    to words (correct.Corrector); it never changes the text."""
     records = [] if paragraphs is not None else None
     chunks = split_wav(wav, chunk_seconds)
     texts = transcribe_pieces(backend, [p for p, _ in chunks], language, context, progress, records)
@@ -94,5 +95,7 @@ def transcribe_wav(backend, wav, language, context="", chunk_seconds=config.CHUN
                 para = dict(r, text=t, offset=o, words=words)
                 if words and hasattr(backend, "word_continuations"):
                     add_candidates(backend, piece, language, context, para)
+                    if corrector:
+                        corrector(para)
                 paragraphs.append(para)
     return "\n\n".join(f"[{fmt_time(o)}] {t}" for t, o in zip(texts, offsets) if t)

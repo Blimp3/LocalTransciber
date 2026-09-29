@@ -90,6 +90,7 @@ APPROX_DOWNLOAD_GB = {
     "mlx-community/Qwen3-ASR-1.7B-4bit": 1.6,
     "mlx-community/Qwen3-ASR-0.6B-8bit": 1.0,
     "microsoft/wavlm-base-plus-sv": 0.4,
+    "mlx-community/Qwen3-0.6B-4bit": 0.35,
 }
 
 # --------------------------------------------------------------------------------------
@@ -156,3 +157,13 @@ VENV_SIZE_GB = {"nvidia": 5.0, "cpu": 1.2, "mac": 1.0}
 DISK_MARGIN_GB = 1.0
 # requirements file per install type
 REQUIREMENTS_FILES = {"nvidia": "requirements-windows.txt", "cpu": "requirements-cpu.txt", "mac": "requirements-mac.txt"}
+
+# --- AI correction (--correct, localtranscribe/correct.py) ---
+# A small local model rescores the speech model's own alternatives at unsure words; the Bend checker vets each choice.
+# Score of an option = LM log-probability of the paragraph + ALPHA * log(speech model p); a swap is proposed when it
+# beats the original by MARGIN nats. Sweep on the 100 FLEURS clips (91 unsure words with alternatives, 32 of them wrong,
+# 15 with the right answer among the alternatives): ALPHA 4, MARGIN 1 gave 13 suggestions = 5 fixes, 1 break, 7 neutral
+# (WER if all accepted 3.35% vs 3.51%). A weak model is best used as a tie-breaker, hence the high ALPHA.
+CORRECT_MODEL = "mlx-community/Qwen3-0.6B-4bit"
+CORRECT_ALPHA = 4.0
+CORRECT_MARGIN = 1.0

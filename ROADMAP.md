@@ -14,25 +14,35 @@ review and correction on top without changing how it is used.
   benchmark scripts strip the timestamps before scoring).
 - Measured presets: NVIDIA (RTX 6000, float16), CPU, and Apple Silicon (100 FLEURS clips per preset, batch sizes,
   speaker separation), plus a fresh-clone install test on a Mac.
-- `--confidence` (Mac): each word-piece's probability and the model's top alternatives are saved to
-  `<recording>.review.json`, one entry per paragraph, without changing the transcript.
+- `--confidence` (Mac): each word's probability is saved to `<recording>.review.json` without changing the
+  transcript. Words below 0.9 are flagged unsure (9.4 % of words, 70 % of the mistakes on 100 FLEURS clips) and get
+  whole-word candidates from the speech model itself: the weakest piece of the word is swapped for each likely
+  alternative and the model finishes the word, kept only if it then continues with the original next word.
 - Review page (`Rivedi.command`, `python -m localtranscribe.review`): editable transcript beside the audio on
   `127.0.0.1`, click a timestamp to jump, save writes the `.md` back.
+- AI suggestions with guardrails (`--correct`, Mac). Four parts, each a safety net for the previous:
+  1. **Flag the unsure words** from the speech model's own confidence.
+  2. **A small local model (Qwen3-0.6B) chooses only there**, among the speech model's own candidates, while the
+     transcription runs.
+  3. **A rule checker accepts or rejects each choice**: only flagged words change, only to one of their candidates,
+     no word is added or removed, a rejected choice leaves the word as it was. The rules (`LAWS.bend`) are proven in
+     [Bend](https://github.com/HigherOrderCO/Bend) (`PROOF.bend`) and the checker runs as a native binary.
+  4. **You have the final say**: the review page highlights each suggestion; nothing is applied until you accept it
+     and save.
+  Tuned on 100 FLEURS clips (13 suggestions, 5 fixes, 1 new mistake) and checked unchanged on 200 other clips: 32
+  suggestions, 12 fixes, 3 new mistakes; accepting all lowers the word error rate from 3.77 % to 3.55 %.
+  `Trascrivi.command` offers the suggestions for single-speaker transcripts.
 
-## Next: local AI correction, with guardrails
+## Next: better suggestions
 
-The goal is fewer mistakes without inventing text. Four parts, each one a safety net for the previous:
-
-1. **Flag the unsure words** from the ASR model's own confidence (already recorded by `--confidence`).
-2. **A small local language model suggests fixes only there**, choosing among the ASR model's own alternatives rather
-   than writing freely. It runs on the same machine, alongside the transcriber, on paragraphs as they finish.
-3. **A rule checker accepts or rejects each suggestion**: changes only at flagged positions, each replacement one of
-   the ASR candidates, no words inserted or deleted, a rejected suggestion leaves the text untouched. The rules are
-   written and proved in [Bend](https://github.com/HigherOrderCO/Bend) and compiled to a native binary.
-4. **You have the final say**: the review tool highlights accepted suggestions and nothing is applied until confirmed.
-
-The candidates are the speech model's own whole-word guesses: each unsure word's weakest piece is swapped for its
-alternatives and the model finishes the word (`"cands"` in the sidecar).
+- Measure on real calls and lectures, not only FLEURS read speech.
+- Reach more mistakes: the right word is among the candidates for only about 38 % of flagged mistakes; many of the
+  rest are numbers written out ("dieci" for "10") or two neighbouring words wrong together.
+- Fewer false alarms: only about one suggestion in three is a real fix (a higher weight on the speech model, ALPHA 8,
+  gave fewer new mistakes on the held-out clips at a similar number of fixes).
+- Let the review page remember rejected suggestions.
+- Make `--confidence` cheaper: the candidates re-read each piece's audio once (about 1.3-1.6x the time); reusing the
+  transcription's own cache would remove that.
 
 ## Under evaluation
 

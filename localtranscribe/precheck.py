@@ -712,7 +712,7 @@ def disk_plan(profile, option, presets, root=None):
     kind = option["kind"]
     table = config.MAC_MODELS if kind == "mac" else config.TORCH_MODELS
     hub = hf_hub_dir()
-    repos = [table[p] for p in presets] + [config.SPEAKER_MODEL]
+    repos = [table[p] for p in presets] + [config.SPEAKER_MODEL] + ([config.CORRECT_MODEL] if kind == "mac" else [])
     venv_gb = 0.0 if venv_ready(root, kind) else config.VENV_SIZE_GB[kind]
     models_gb = sum(config.APPROX_DOWNLOAD_GB.get(r, 0.0) for r in repos if not model_cached(r, hub))
     margin = config.DISK_MARGIN_GB

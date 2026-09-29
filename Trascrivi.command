@@ -43,7 +43,13 @@ EXTRA=()
 CHOICE="$(osascript -e 'button returned of (display dialog "Vuoi separare chi parla? Utile per una telefonata tra due persone." with title "Trascrivi" buttons {"Annulla", "Separa 2 persone", "Testo unico"} default button "Testo unico")' 2>/dev/null)"
 case "$CHOICE" in
   "Separa 2 persone") EXTRA=(--speakers 2) ;;
-  "Testo unico") ;;
+  "Testo unico")
+    AI="$(osascript -e 'button returned of (display dialog "Vuoi i suggerimenti AI per le parole incerte? Un piccolo modello sul tuo Mac propone correzioni, che poi accetti o rifiuti con Rivedi.command. Ci vuole circa un quarto di tempo in più." with title "Trascrivi" buttons {"Annulla", "Sì, con suggerimenti", "No"} default button "No")' 2>/dev/null)"
+    case "$AI" in
+      "Sì, con suggerimenti") EXTRA=(--correct) ;;
+      "No") ;;
+      *) echo "Annullato."; exit 0 ;;
+    esac ;;
   *) echo "Annullato."; exit 0 ;;
 esac
 
@@ -67,6 +73,9 @@ if [ $STATUS -eq 0 ]; then
   echo "Fatto. I file .md sono accanto ai file audio (li trovi selezionati nel Finder)."
 else
   echo "Finito con qualche problema (vedi i messaggi sopra)."
+fi
+if [ $STATUS -eq 0 ] && [ "${EXTRA[0]}" = "--correct" ]; then
+  echo "Per vedere e accettare o rifiutare i suggerimenti, fai doppio clic su Rivedi.command."
 fi
 echo "Premi Invio per chiudere questa finestra."
 read -r _

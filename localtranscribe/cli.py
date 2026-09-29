@@ -38,6 +38,9 @@ def build_parser():
     ap.add_argument("--confidence", action="store_true",
                     help="also save each word-piece's confidence and the model's alternatives to <recording>.review.json "
                          "(for the review tool; Apple Silicon only for now)")
+    ap.add_argument("--correct", action="store_true",
+                    help="suggest fixes for unsure words with a small local model, checked by the Bend rule checker "
+                         "(implies --confidence; the suggestions go to <recording>.review.json, the .md is unchanged)")
     ap.add_argument("--stats", action="store_true", help="print device, model and peak memory at the end")
     return ap
 
@@ -134,12 +137,12 @@ def run(args):
             print(f"Loading {repo} on the {label} (batch {batch})...", flush=True)
             t0 = time.perf_counter()
             backend = _load_backend(repo, device, batch)
-            if args.confidence:
+            if args.confidence or args.correct:
                 if backend.name == "mlx" and not args.speakers:
                     backend.record_confidence = True
                 else:
-                    print("  [note] --confidence is not supported with --speakers or on this backend yet; "
-                          "continuing without it.")
+                    print("  [note] --confidence and --correct are not supported with --speakers or on this backend "
+                          "yet; continuing without them.")
             for note in getattr(backend, "notes", []):
                 print(f"  [note] {note}")
             print(f"  loaded in {time.perf_counter() - t0:.0f}s ({backend.describe()})", flush=True)
@@ -164,6 +167,11 @@ def run(args):
 
         start = time.perf_counter()
         paragraphs = [] if getattr(backend, "record_confidence", False) else None
+        corrector = None
+        if args.correct and paragraphs is not None:
+            from .correct import Corrector
+
+            corrector = Corrector()
         if args.speakers:
             from .diarize import diarize, first_appearance_names, fmt_time, transcribe_turns
 
@@ -173,7 +181,8 @@ def run(args):
             names = first_appearance_names(turns)
             text = "\n\n".join(f"[{fmt_time(a)}] {names[s]}: {t}" for a, s, t in turns if t)
         else:
-            text = transcribe_wav(get_backend(), wav, language, args.context, args.chunk, _progress(), paragraphs)
+            text = transcribe_wav(get_backend(), wav, language, args.context, args.chunk, _progress(), paragraphs,
+                                  corrector)
         elapsed = time.perf_counter() - start
         audio_total += duration
         time_total += elapsed
@@ -189,7 +198,8 @@ def run(args):
                 json.dump({"version": 1, "model": repo, "top_k": config.CONFIDENCE_TOP_K, "paragraphs": paragraphs},
                           f, ensure_ascii=False)
             print(f"  confidence -> {side}")
-        print(f"  done in {elapsed:.0f}s ({duration / max(elapsed, 1e-6):.0f}x realtime) -> {out_path}")
+        rt = duration / max(elapsed, 1e-6)
+        print(f"  done in {elapsed:.0f}s ({rt:.{0 if rt >= 10 else 1}f}x realtime) -> {out_path}")
 
     if args.stats and backend is not None:
         peak = backend.peak_memory_gb()

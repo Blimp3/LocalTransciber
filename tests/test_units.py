@@ -326,6 +326,8 @@ class SetupModelsTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, mods), mock.patch.object(devices, "is_apple_silicon", return_value=True):
             self.assertTrue(setup_models.is_cached("mlx-community/Qwen3-ASR-0.6B-8bit"))
             self.assertEqual(fake_hf.snapshot_download.call_args.kwargs["allow_patterns"], pats)
+            self.assertTrue(setup_models.is_cached(config.CORRECT_MODEL))
+            self.assertEqual(fake_hf.snapshot_download.call_args.kwargs["allow_patterns"], pats)
             self.assertTrue(setup_models.is_cached("microsoft/wavlm-base-plus-sv"))
             self.assertIsNone(fake_hf.snapshot_download.call_args.kwargs["allow_patterns"])
 
