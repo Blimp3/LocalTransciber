@@ -125,5 +125,9 @@ hardware check should recommend **light**.
     +2.4% time, same peak memory. 6% of word-pieces fall below p 0.9 and 0.7% below p 0.5. Not supported with
     `--speakers` or on the torch path yet. Tests: 146 pass (`tests/test_confidence.py`, 7 new).
   - Open: the correction model choice (Qwen3-0.6B/1.7B 4-bit?), and ASR + LLM measured together on 8 GB. Grouping
-    word-pieces into words and flagging unsure ones. Next: commit this, then Phase 2 (paragraph timestamps; the
-    sidecar can take each paragraph's offset then).
+    word-pieces into words and flagging unsure ones.
+- 2026-09-29, end: fresh-clone test PASS (clone from GitHub, empty HF cache: setup 10 min, best recommended,
+  2 GB of models downloaded, offline transcript identical to the reference, 146 tests pass, clean `git status`).
+  Merged into `main` (fast-forward). Not tested this session: the Windows/NVIDIA path, the Trascrivi.command
+  double-click (syntax checked only). Next: Phase 2 (paragraph timestamps; the sidecar gets each paragraph's
+  offset then).
