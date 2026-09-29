@@ -55,10 +55,13 @@ localtranscribe_settings.json.tmp
 !tests/*.txt
 !tests/**/*.txt
 !README.md
-!CLAUDE.md
-!/.claude/**
-.claude/settings.local.json
+!ROADMAP.md
+!tests/README.md
 *.review.json
+
+# --- Local AI-assistant notes and settings (stay on this computer) ----------------------
+CLAUDE.md
+.claude/
 /output/
 /outputs/
 /transcripts/

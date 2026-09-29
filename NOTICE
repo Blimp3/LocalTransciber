@@ -1,0 +1,8 @@
+LocalTranscribe
+Copyright 2026 Blimp3
+
+This product includes code adapted from the qwen-asr package
+(https://github.com/QwenLM/Qwen3-ASR), Copyright 2026 The Alibaba Qwen
+team, licensed under the Apache License, Version 2.0. See
+localtranscribe/textutil.py for the adapted functions and the changes
+made to them.

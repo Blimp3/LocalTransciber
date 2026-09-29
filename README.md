@@ -1,356 +1,298 @@
-# LocalTranscribe
+<h1 align="center">LocalTranscribe</h1>
 
-Turn Italian audio and video recordings (interviews, phone calls, meetings, lectures) into text **on your own
-computer**. Nothing is uploaded: after a one-time download of the speech models, it works fully offline.
+<p align="center">
+  Italian speech-to-text that runs entirely on your own computer.<br>
+  Drop in a recording, get a Markdown transcript next to it. Nothing is uploaded.
+</p>
 
-It uses the open speech model **Qwen3-ASR** and runs on
+<p align="center">
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20Apple%20Silicon%20%7C%20Windows%20NVIDIA%20%7C%20CPU-lightgrey">
+  <img alt="Python 3.11" src="https://img.shields.io/badge/python-3.11-blue">
+  <img alt="Model: Qwen3-ASR" src="https://img.shields.io/badge/model-Qwen3--ASR-orange">
+  <img alt="Works offline" src="https://img.shields.io/badge/works-offline-brightgreen">
+</p>
 
-- a **Mac with Apple Silicon** (M1, M2, M3, M4 ...) using the Apple GPU,
-- a **Windows PC with an NVIDIA graphics card**,
-- any other computer, on the processor only (slower).
+> **Italiano:** la [Guida rapida](#guida-rapida-italiano) è in fondo alla pagina.
 
-You drag files in, you get a `.md` (Markdown) file next to each recording. It can also split a two-person phone call into
-`[00:01:23] Parlante 1: ...` / `Parlante 2: ...` lines.
+LocalTranscribe turns Italian audio and video recordings (interviews, phone calls, meetings, lectures) into text with
+the open speech model [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR). Models are downloaded once during setup;
+after that everything runs offline on your Apple Silicon Mac, your NVIDIA GPU, or a plain CPU.
 
-> Italiano: vai alla [Guida rapida](#guida-rapida-italiano) in fondo.
+## Features
 
----
+- **Local and offline.** After setup the model library is switched to offline mode. No account, no cloud service,
+  no telemetry. Transcripts are plain Markdown files you control.
+- **Any audio or video file.** wav, mp3, m4a, ogg, opus, flac, mp4, mkv, webm, ... FFmpeg is bundled; nothing to install.
+- **Runs on what you have.** Apple Silicon (MLX on the Apple GPU), NVIDIA GPUs (PyTorch + CUDA), or CPU only.
+- **Picks the model for your machine.** A [hardware check](#hardware-check) recommends *best* or *light*, explains
+  why, and remembers the choice.
+- **Speaker separation.** `--speakers 2` turns a two-person call into `[00:01:23] Parlante 1: ...` lines.
+- **Context hints.** `--context "Mario Rossi, LoRaWAN"` helps names and jargon come out spelled right.
+- **Word confidence** (Mac). `--confidence` records each word-piece's probability and the model's alternatives, the
+  basis for the upcoming review tool (see the [roadmap](ROADMAP.md)).
+- **Double-click launchers** for people who never open a terminal: `Trascrivi.command` on Mac, drag-and-drop onto
+  `transcribe.bat` on Windows.
 
-## What you need
+## Requirements
 
-| | Apple Silicon Mac | Windows PC with NVIDIA GPU | Any PC, no GPU |
+| | Apple Silicon Mac | Windows + NVIDIA GPU | Any PC, CPU only |
 |---|---|---|---|
-| System | macOS 14 (Sonoma) or newer, M1 or newer. **Intel Macs are not supported.** | Windows 10/11, current NVIDIA driver | Windows 10/11 |
+| System | macOS 14 (Sonoma) or newer, M1 or newer. Intel Macs are not supported. | Windows 10/11, NVIDIA driver 570.65 or newer, GeForce GTX 16 / RTX 20 series (2018) or newer | Windows 10/11 |
+| GPU memory | 8 GB unified memory or more for *best* | 6 GB for *best*, 3 GB for *light* | - |
 | Free disk space | about 4 GB | about 12 GB (10 GB with one model) | about 4 GB |
-| Internet | only for setup | only for setup | only for setup |
+| Internet | setup only | setup only | setup only |
 
-Two speech models are available. The [hardware check](#hardware-check) picks one for your machine and remembers it;
-you can accept or change it, and force either later with `--model`.
+Linux works with a manual install (see [Development](#development)) but is not officially supported.
 
-| Model | Download | Memory it needs | Accuracy (Italian) | Speed |
-|---|---|---|---|---|
-| **best**: Qwen3-ASR-1.7B | 4.7 GB (NVIDIA) / 1.6 GB (Mac, 4-bit) | NVIDIA: **5.2 GB** video memory (measured, 4.0 GB at the slowest setting); Mac: **2.5 GB** (measured) | word error rate **2.4 - 2.7 %** (Mac, 4-bit: 3.5 %) | NVIDIA RTX 6000: **26x** real time (1 hour of audio in 2.3 minutes); M2 Mac: **6.4x** (6 - 12x depending on memory pressure) |
-| **light**: Qwen3-ASR-0.6B | 1.9 GB (NVIDIA / CPU) / 1.0 GB (Mac, 8-bit) | NVIDIA: **2.8 GB** video memory (measured); CPU: about 6 GB RAM while loading (measured); Mac: **1.8 GB** (measured) | word error rate **4.4 - 5.8 %** (Mac: 5.7 %) | NVIDIA: 27x; CPU (6-core Xeon): **2.6x** (1 hour in 23 minutes); M2 Mac: **19x** |
+## Quick start
 
-Which one is chosen (by the hardware check, and by `--model auto`, which follows the same rules):
+Get the code: [download the ZIP](https://github.com/Blimp3/LocalTransciber/archive/refs/heads/main.zip) and unpack it
+somewhere permanent (for example your Documents folder), or clone it:
 
-- **NVIDIA:** *best* if the card has 6 GB of video memory or more, *light* from about 3 GB. Below that, or when the
-  card is older than the GeForce GTX 16 / RTX 20 series (2018), or the driver is older than 570.65 (Windows) /
-  570.26 (Linux, the minimum for CUDA 12.8), the processor is used instead (*light*) and the check says why. (Until
-  the hardware check existed the limit for *best* was 12 GB; measured, it needs 4.0 GB at the slowest setting and
-  5.2 GB at batch 8.)
-- **Mac:** *best* (1.7B, 4-bit) if the Mac has 8 GB of memory or more, otherwise *light* (0.6B, 8-bit). Measured on
-  an M2 MacBook Air with 8 GB: *best* makes about 40% fewer mistakes than *light* and still runs at about 6x real time.
-- **CPU only:** always *light*.
-
-Mac numbers come from 100 FLEURS clips (25 minutes) on an M2 MacBook Air with 8 GB. "Speed 26x" means one minute of audio takes about 2.3 seconds.
-
----
-
-## Setup
-
-### Getting the files onto your computer
-
-Either way you need access to the private GitHub repository (**LocalTransciber**).
-
-- **Download a ZIP (easiest):** open the repository page in your browser while logged in to GitHub, click the green
-  **Code** button, then **Download ZIP**. Double-click the ZIP to unpack it and move the folder somewhere permanent
-  (for example your Documents folder).
-- **Or use git:** `git clone https://github.com/<owner>/LocalTransciber.git`. On a Mac the first use of `git` may pop up
-  a window offering to install the *command line developer tools* - click **Install** and wait a few minutes, then run
-  the command again. Because the repository is private, git will ask you to log in to GitHub.
-
-### Mac (Apple Silicon)
-
-1. Open **Terminal** (press Cmd+Space, type *Terminal*, press Return).
-2. Type `cd ` (with a space), drag the LocalTranscribe folder from Finder into the Terminal window, press Return.
-3. Run:
-
-   ```
-   bash setup_mac.sh
-   ```
-
-   It checks that your Mac is supported, installs the small helper tool **uv** if it is missing (from the official
-   installer at astral.sh; it says so before doing it), runs the [hardware check](#hardware-check) (press Enter to
-   accept the recommended model), creates a private Python environment in the `.venv` folder, installs the packages
-   (about 1 GB) and downloads the models for your Mac (about 2 GB with the speaker model). Allow 10 - 20 minutes.
-   `bash setup_mac.sh light` (or `best`) skips the question, `bash setup_mac.sh both` downloads both models.
-
-4. To transcribe: **double-click `Trascrivi.command`** in Finder. The first time, macOS may say it cannot check the
-   file because it was downloaded: **right-click it, choose Open, then Open** (only once). A window asks you to pick
-   one or more recordings, transcribes them, and shows the `.md` files in Finder.
-
-   Prefer Terminal? `./transcribe.sh recording.m4a`.
-
-### Windows (NVIDIA GPU or plain CPU)
-
-1. Double-click **`setup_windows.bat`**. It installs **uv** if needed (official installer, announced beforehand), runs the
-   [hardware check](#hardware-check) (press Enter to accept the recommended model), creates the `.venv` folder,
-   installs the packages (about 1 - 5 GB, the NVIDIA version is the big one) and downloads the models. It
-   automatically uses the CPU-only packages when no usable NVIDIA card is found. Options (from a command prompt):
-   `setup_windows.bat light`, `setup_windows.bat both`, `setup_windows.bat cpu` (force CPU-only), `--yes` (do not ask).
-2. To transcribe: **drag audio or video files onto `transcribe.bat`**.
-
-If the setup stops because of a network problem, just run it again; it continues where it left off.
-
-*Linux (not tested, not officially supported):* create the environment yourself with
-`uv venv --python 3.11 .venv` and `uv pip install --index-strategy unsafe-best-match -r requirements-windows.txt`
-(NVIDIA) or `requirements-cpu.txt` (no GPU), then run `PYTHONPATH=. .venv/bin/python -m localtranscribe file.m4a`.
-
----
-
-## Hardware check
-
-The first time you use the project, LocalTranscribe looks at your computer, recommends the model that should run on
-it, lets you accept or change the recommendation, and remembers the choice. The setup scripts do this **first**, before
-anything big is downloaded, so a full disk or an unsupported graphics card shows up while it is still cheap to stop.
-To repeat it at any time (it only looks and saves; it installs and downloads nothing):
-
-```
-check_hardware.bat              (Windows)
-bash check_hardware.sh          (Mac; also Linux, best effort)
+```bash
+git clone https://github.com/Blimp3/LocalTransciber.git
+cd LocalTransciber
 ```
 
-Example, on the NVIDIA PC where the tool was developed:
+### macOS (Apple Silicon)
 
-```
-Hardware check
-  Computer : Windows 11 (build 26200), Intel(R) Xeon(R) W-3235 CPU @ 3.30GHz (6 cores, 12 threads), 41 GB memory (32.7 GB free)
-  Graphics : NVIDIA Quadro RTX 6000, 22.5 GB video memory, driver 597.06
-  Disk     : 107 GB free (everything is already installed and downloaded)
-Recommended: best - Qwen3-ASR 1.7B on the NVIDIA GPU (most accurate)
-    about 2.4-2.7 mistakes per 100 words; about 26x real time on an RTX 6000 (1 hour of audio in a few minutes); needs about 6 GB of video memory
-Also possible:
-  light - Qwen3-ASR 0.6B (smaller and lighter): about twice as many mistakes (4.4-5.8 per 100 words), needs less video memory (about 3 GB), similar speed
-Press Enter to use "best", or type "light":
+```bash
+bash setup_mac.sh            # 10-20 minutes, once
+./transcribe.sh recording.m4a
 ```
 
-It looks at the operating system (macOS must be 14 or newer; Windows and Linux versions are shown), the processor
-(name, cores, threads), total and available memory, the free disk space where the program lives and where the Hugging
-Face model cache lives (`HF_HOME`, else `~/.cache/huggingface`), the NVIDIA graphics cards (through `nvidia-smi`: memory,
-driver, architecture) or the Apple chip (model, memory, GPU cores, Rosetta). It uses only Python's standard library, so it
-runs before any package is installed.
+`setup_mac.sh` checks that the Mac is supported, installs the small helper tool [uv](https://docs.astral.sh/uv/) if
+it is missing (official installer; it says so before doing it), runs the hardware check (press Enter to accept the
+recommended model), creates a Python environment in `.venv`, installs about 1 GB of packages and downloads about 2 GB
+of models. `bash setup_mac.sh light` (or `best`, or `both`) skips the question.
 
-| Your computer | Recommended | Notes |
-|---|---|---|
-| NVIDIA card with 6 GB of video memory or more | **best** on the GPU | batch size (1 to 8) from the free video memory |
-| NVIDIA card with about 3 - 6 GB | **light** on the GPU | |
-| NVIDIA card below 3 GB, older than GTX 16 / RTX 20 series (compute capability below 7.5), or driver older than 570.65 (Windows) / 570.26 (Linux) | **light** on the processor | the check says which reason applies; updating the driver enables the GPU |
-| No NVIDIA card or driver | **light** on the processor | warns below 8 GB of memory; about 2.6x real time on a 6-core Xeon (1 hour of audio in about 23 minutes), yours may differ |
-| Apple Silicon Mac (8 GB or more) | **best** | measured on an M2 Air with 8 GB: about 2.5 GB peak, 6.4x real time; batch size 1; 8 GB: "close memory-heavy apps"; MacBook Air: "keep it plugged in for long files" |
-| Intel Mac, macOS older than 14, or Python under Rosetta | nothing | the setup stops and explains what to do |
-| Not enough free disk space | nothing | the setup stops; it says which choice would fit |
+Prefer not to use Terminal? **Double-click `Trascrivi.command`** in Finder, pick one or more recordings, and the `.md`
+transcripts appear next to them. The first time, macOS may refuse to open a downloaded script: right-click it, choose
+**Open**, then **Open** again (only once).
 
-Disk space needed = program + models + 1 GB spare: NVIDIA program about 5 GB, CPU-only about 1.2 GB, Mac about 1 GB;
-models 4.7 GB (best) / 1.9 GB (light) on PC, 1.6 GB / 1.0 GB on the Mac, plus the 0.4 GB speaker model. A program
-folder and models that are already there are counted as zero, so running the setup again is never blocked by that.
+### Windows (NVIDIA GPU or CPU)
 
-Options (the same words work for `setup_windows.bat` and `setup_mac.sh`):
+1. Double-click **`setup_windows.bat`**. It installs uv if needed, runs the hardware check, creates `.venv`, installs
+   the packages (1 - 5 GB; the NVIDIA build is the big one) and downloads the models. It falls back to the CPU-only
+   packages when no usable NVIDIA card is found.
+2. **Drag audio or video files onto `transcribe.bat`.**
 
-```
-check_hardware.bat best         choose without being asked: best, light, both (download both) or cpu (force the processor)
-check_hardware.bat --yes        accept the recommendation without asking (also when there is no keyboard, e.g. in a script)
-check_hardware.bat --json       machine-readable result; nothing is saved unless --yes is added
-check_hardware.bat --no-save    look only
+From a command prompt: `setup_windows.bat light|both|cpu [--yes]` and `transcribe.bat recording.m4a [options]`.
+
+If setup stops because of a network problem, run it again; it continues where it left off.
+
+## Usage
+
+```bash
+./transcribe.sh interview.m4a --context "Mario Rossi, Politecnico di Milano, LoRaWAN"   # Mac
+transcribe.bat  call.m4a --speakers 2                                                  # Windows
 ```
 
-An explicit choice is not asked about, but the check is still shown, with a warning if the choice will not fit (for
-example `best` on a 4 GB card).
-
-**The saved choice** is the file `localtranscribe_settings.json` in the program folder (ignored by git; it holds the
-preset, device, batch size, a hardware summary and the date). `transcribe.bat`, `Trascrivi.command` and
-`transcribe.sh` use it as their default; `--model`, `--device` and `--batch-size` on the command line still win. The
-saved batch size is a ceiling: it is lowered when the video memory that is free at that moment cannot hold it. If the
-file is missing (someone skipped the setup) or damaged, the tool runs the check once without asking, prints the
-recommendation, saves it and carries on; if only one model is downloaded it uses that one. With several NVIDIA cards
-the supported one with the most memory is used. Delete the file to have the check done again.
-
----
-
-## Using it
-
-Drag files onto `transcribe.bat` (Windows) or use `Trascrivi.command` (Mac). Any common format works (wav, mp3, m4a,
-ogg, opus, flac, mp4, mkv, webm, ...): the decoder is built in, you do not need to install ffmpeg.
-
-The transcript `<recording name>.md` is saved next to the recording (long recordings are cut at quiet moments into
-pieces of about 20 seconds; each piece becomes a paragraph).
-
-From a terminal there are extra options:
-
-```
-transcribe.bat interview.m4a --context "Mario Rossi, Politecnico di Milano, LoRaWAN"
-./transcribe.sh   interview.m4a --context "Mario Rossi, Politecnico di Milano, LoRaWAN"     # Mac
-```
+The transcript `<recording>.md` is written next to the recording (or into `--out-dir`). Long recordings are cut at
+quiet moments into pieces of about 20 seconds; each piece becomes a paragraph. With `--speakers`, each turn starts with
+a `[hh:mm:ss]` timestamp and the speaker's label.
 
 | Option | What it does |
 |---|---|
 | `--context "names, terms"` | names and technical words that occur in the recording; helps spell them correctly |
 | `--speakers 2` | separate the speakers: `[00:01:23] Parlante 1: ...`. Reliable on calls of a few minutes or more; may merge very short replies such as "sì" into the other speaker |
 | `--out-dir folder` | write the transcripts to this folder instead of next to the recordings |
-| `--language auto` | detect the language instead of Italian (or `English`, `French`, `Spanish`, ...) |
-| `--model best`, `light` or a repo id | choose the model (default: the choice saved by the hardware check; without one, automatic, see above) |
-| `--device auto`, `cuda`, `mps`, `cpu` | choose the hardware (default: the saved choice, else automatic). On a Mac `mps` is the Apple GPU and `cpu` runs on the processor cores |
+| `--language auto` | detect the language instead of assuming Italian (or `English`, `French`, `Spanish`, ...) |
+| `--model best`, `light`, or a Hugging Face repo id | choose the model (default: the choice saved by the hardware check) |
+| `--device auto`, `cuda`, `mps`, `cpu` | choose the hardware (default: the saved choice). On a Mac `mps` is the Apple GPU |
 | `--batch-size N` | pieces processed together (default: the saved choice, lowered if memory is tight; lower = less memory) |
-| `--confidence` | also save each word-piece's confidence and the model's alternatives to `<recording>.review.json` (for the review tool; Apple Silicon only for now) |
-| `--stats` | at the end print the device, model, speed and peak memory used |
+| `--confidence` | also save each word-piece's confidence and the model's alternatives to `<recording>.review.json` (Apple Silicon only for now) |
+| `--stats` | print the device, model, speed and peak memory at the end |
 | `--chunk 20` | seconds per piece. Leave at 20: longer pieces are measurably less accurate |
 
-### MacBook Air M2 notes
+## Models
 
-- **Which model you get.** The [hardware check](#hardware-check) reads your memory (you can also see it under
-  **Apple menu > About This Mac**). With **8 GB or more** (8, 16, 24 GB) it recommends the *best* model (Qwen3-ASR-1.7B, 4-bit);
-  the *light* model (Qwen3-ASR-0.6B, 8-bit) is faster (about 19x real time) and can be chosen with `bash setup_mac.sh light`
-  or `./transcribe.sh file.m4a --model light`.
-- **Keep it plugged in** for long recordings. The Air has no fan, so it slows down when it gets hot; on battery
-  it slows down further.
-- **On 8 GB, close memory-hungry programs** (browsers with many tabs, video calls, Photos, Xcode) before transcribing.
-  The speaker-separation step (`--speakers`) needs about 2 GB more for a short while.
-- A one-hour recording takes several minutes; the window shows progress.
+Two presets of Qwen3-ASR. The hardware check picks one; `--model` overrides it.
 
----
+| Preset | Model | Download | Memory (measured) | Word error rate, Italian | Speed |
+|---|---|---|---|---|---|
+| **best** | Qwen3-ASR-1.7B | NVIDIA 4.7 GB, Mac 1.6 GB (4-bit) | NVIDIA 4.0 GB (batch 1) to 5.2 GB (batch 8); Mac 2.5 GB | NVIDIA **2.4 - 2.7 %**; Mac 4-bit **3.5 %** | RTX 6000 **26x** real time (1 hour in 2.3 min); M2 Mac **6x** |
+| **light** | Qwen3-ASR-0.6B | NVIDIA / CPU 1.9 GB, Mac 1.0 GB (8-bit) | NVIDIA 1.7 - 2.8 GB; CPU about 6 GB RAM; Mac 1.8 GB | NVIDIA **4.4 - 5.8 %**; Mac **5.7 %** | NVIDIA 27x; 6-core CPU **2.6x** (1 hour in 23 min); M2 Mac **19x** |
+
+How the default is chosen (the hardware check and `--model auto` follow the same rules):
+
+- **NVIDIA:** *best* with 6 GB of video memory or more, *light* from about 3 GB. Below that, on cards older than the
+  GTX 16 / RTX 20 series, or with a driver older than 570.65 (Windows) / 570.26 (Linux), the CPU is used and the check
+  says why.
+- **Mac:** *best* (1.7B, 4-bit) with 8 GB of memory or more, otherwise *light* (0.6B, 8-bit). On an 8 GB M2 Air
+  *best* makes about 40 % fewer mistakes than *light* and still runs at about 6x real time. The 8-bit 1.7B model
+  (2.9 % WER, 2.3x, 3.3 GB) is available with `--model mlx-community/Qwen3-ASR-1.7B-8bit`.
+- **CPU only:** always *light*.
 
 ## Accuracy and speed
 
-Measured on the FLEURS Italian test set (read sentences, 100 clips, about 24 minutes) and on a 24-minute
-recording built from those clips, with the **NVIDIA Quadro RTX 6000** (float16). Word error rate (WER) ignores case and
-punctuation; lower is better.
+Word error rate (WER, lower is better; case and punctuation ignored) on the FLEURS Italian test set: 100 read
+sentences (about 25 minutes) and a 24-minute recording built from them.
 
-| Model | 100 clips (set A) | 100 clips (set B) | 24-minute file | Speed | Peak video memory |
+| Model | 100 clips, set A | 100 clips, set B | 24-minute file | Speed | Peak GPU memory |
 |---|---|---|---|---|---|
-| best (1.7B), NVIDIA | **2.57 %** | 2.74 % | **2.44 %** | 25 - 26x | 5.2 GB (batch 8) |
-| light (0.6B), NVIDIA | 4.38 % | 5.82 % | 5.18 % | 27x | 2.8 GB (batch 8) |
-| light (0.6B), CPU float32 | - | 4.68 % (first 10 clips of set B; same as GPU) | - | 2.6x | about 6 GB RAM |
-| best 4-bit (1.7B), Apple MLX | - | 3.51 % | - | 6.4x | 2.5 GB |
-| best 8-bit (1.7B), Apple MLX | - | 2.89 % | - | 2.3x | 3.3 GB |
-| light 8-bit (0.6B), Apple MLX | - | 5.74 % | - | 18.7x | 1.8 GB |
+| best (1.7B), NVIDIA RTX 6000, float16 | **2.57 %** | 2.74 % | **2.44 %** | 25 - 26x | 5.2 GB (batch 8) |
+| light (0.6B), NVIDIA RTX 6000, float16 | 4.38 % | 5.82 % | 5.18 % | 27x | 2.8 GB (batch 8) |
+| light (0.6B), CPU, float32 | - | 4.68 % (first 10 clips) | - | 2.6x | about 6 GB RAM |
+| best 4-bit (1.7B), M2 MacBook Air 8 GB, MLX | - | 3.51 % | - | 6.4x | 2.5 GB |
+| 1.7B 8-bit, M2 MacBook Air 8 GB, MLX | - | 2.89 % | - | 2.3x | 3.3 GB |
+| light 8-bit (0.6B), M2 MacBook Air 8 GB, MLX | - | 5.74 % | - | 18.7x | 1.8 GB |
 
-Set A is the 100-clip set used to evaluate the previous version of this tool; set B is what
-`benchmark/download_fleurs.py` downloads (the first 100 recordings of the test archive, the set the Mac
-self-test uses). The Mac rows are all 100 clips of set B (25.3 minutes) on an M2 MacBook Air with 8 GB, greedy
-decoding, batch 1, from `mac_selftest.sh`, so they compare directly with the NVIDIA set B column (float16: best
-2.74 %, light 5.82 %). Mac speed varies with memory pressure (best measured 6 - 12x).
+Set B is what `benchmark/download_fleurs.py` downloads and what the Mac self-test uses, so the Mac rows compare directly
+with the NVIDIA set B column. Mac speed varies with memory pressure (best measured 6 - 12x). On a real 6.6-minute phone
+call the best model produced the same text as the previous version of this tool.
 
-Peak video memory by batch size (best 1.7B / light 0.6B): 1: 4.0 / 1.7 GB, 2: 4.1 / 1.8, 4: 4.5 / 2.1, 8: 5.2 / 2.8,
-16: 6.5 / 4.1. Speed (best): 4.7x / 7.4x / 12.9x / 22x / 32x for the same batch sizes.
+## Hardware check
 
-On a real phone call (6.6 minutes) the best model produced exactly the same text as the previous version of this tool.
-
----
-
-## Privacy
-
-Everything runs on your computer. After setup (which downloads the models from Hugging Face and the Python packages from
-the internet) the launchers switch the model library to **offline mode** (`HF_HUB_OFFLINE=1`), so the audio and the
-transcripts never leave the machine and nothing is sent anywhere. No account, no cloud service, no telemetry from this
-tool. Transcripts are plain-text Markdown (`.md`) files that you control; any text editor opens them.
-
-## Licences of what it uses
-
-| Component | Licence |
-|---|---|
-| Qwen3-ASR models (`Qwen/Qwen3-ASR-1.7B`, `-0.6B`) and the `qwen-asr` package | Apache-2.0 |
-| MLX conversions (`mlx-community/Qwen3-ASR-...-8bit`) | Apache-2.0 (as the originals) |
-| MLX and `mlx-audio` | MIT |
-| Silero VAD (voice activity detection, ships inside its Python package) | MIT |
-| WavLM speaker model `microsoft/wavlm-base-plus-sv` (used by `--speakers`) | The model card names no licence and points to the licence file of Microsoft's UniSpeech repository, which is **Creative Commons Attribution-ShareAlike 3.0**; the WavLM code repository (microsoft/unilm) is MIT. The weights are not included here: the setup script downloads them from Hugging Face. Check the current terms before redistributing them. |
-| PyTorch, transformers, scikit-learn, PyAV | BSD / Apache-2.0 (PyAV bundles FFmpeg libraries under their own LGPL/GPL terms) |
-| FLEURS test clips (benchmark) | CC-BY-4.0, Google; attribution in `tests/README.md` |
-
-The audio chunker and repetition filter in `localtranscribe/textutil.py` are adapted from `qwen-asr` (Apache-2.0,
-copyright The Alibaba Qwen team), with two documented changes.
-
----
-
-## How it works (for the curious)
+The setup scripts run it first, before anything big is downloaded, so a full disk or an unsupported graphics card
+shows up while it is still cheap to stop. It uses only Python's standard library. Repeat it any time:
 
 ```
-file -> PyAV decoder (16 kHz mono) -> cut at quiet moments into ~20 s pieces -> speech model -> text
-                                        (same code on every platform)      NVIDIA: PyTorch + qwen-asr, float16
-                                                                            CPU:    PyTorch + qwen-asr, float32
-                                                                            Mac:    MLX (mlx-audio), 4-bit / 8-bit, Apple GPU
---speakers N: Silero VAD -> WavLM voice fingerprints -> clustering -> per-speaker turns -> the same speech model
+check_hardware.bat                 (Windows)
+bash check_hardware.sh             (Mac; Linux best effort)
+check_hardware.bat --json          machine-readable; add --yes to save the recommendation without asking
 ```
 
-- `localtranscribe/backends/` holds the two backends behind one interface; `mlx` is imported only on a Mac.
-- `localtranscribe/config.py` holds every model name and threshold in one place.
-- `localtranscribe/precheck.py` is the hardware check (standard library only); `devices.py` uses its rules, so
-  `--model auto` and the check always agree.
-- `--context` becomes the model's system prompt on both backends. (On the Mac one extra line break follows the
-  context text; without `--context` the prompts are identical.)
-- The chunker differs from the one in `qwen-asr` in two ways: audio up to 25 s stays in one piece, and no cut leaves
-  a final piece shorter than 3 s. Without this, 20-24 s clips were cut into a piece and a half-second scrap, and the
-  model invented a word ("sì") on the scrap, raising the error rate on the benchmark from 2.6 % to 3.1 %.
+<details>
+<summary>What it looks at and what it recommends</summary>
 
-### Benchmarks and tests
+It reads the operating system, the processor, total and available memory, the free disk space where the program and the
+Hugging Face model cache live (`HF_HOME`, else `~/.cache/huggingface`), the NVIDIA cards (via `nvidia-smi`: memory,
+driver, architecture) or the Apple chip (model, memory, GPU cores, Rosetta).
+
+| Your computer | Recommended | Notes |
+|---|---|---|
+| NVIDIA card with 6 GB or more | **best** on the GPU | batch size 1 - 8 from the free video memory |
+| NVIDIA card with about 3 - 6 GB | **light** on the GPU | |
+| NVIDIA card below 3 GB, older than GTX 16 / RTX 20 (compute capability < 7.5), or driver older than 570.65 / 570.26 | **light** on the CPU | the check says which reason applies |
+| No NVIDIA card or driver | **light** on the CPU | warns below 8 GB of memory |
+| Apple Silicon Mac, 8 GB or more | **best** (1.7B, 4-bit) | batch size 1; "close memory-heavy apps" on 8 GB; "keep it plugged in" on a MacBook Air |
+| Intel Mac, macOS older than 14, or Python under Rosetta | nothing | the setup stops and explains what to do |
+| Not enough free disk space | nothing | the setup stops and says which choice would fit |
+
+The saved choice lives in `localtranscribe_settings.json` next to the program (git-ignored): preset, device, batch size,
+a hardware summary and the date. The launchers use it as their default; `--model`, `--device` and `--batch-size` still
+win. If the file is missing or damaged the tool runs the check once, prints the recommendation and carries on. Delete
+the file to be asked again.
+
+</details>
+
+## How it works
 
 ```
-python benchmark/download_fleurs.py --n 100                       # clips into benchmark/data/ (about 90 MB)
-python benchmark/bench.py --data benchmark/data/fleurs_it --model best       # WER, speed, peak memory
+recording -> PyAV decoder (16 kHz mono) -> cut at quiet moments into ~20 s pieces -> Qwen3-ASR -> Markdown
+                                           (same code on every platform)             NVIDIA: PyTorch + qwen-asr, float16
+                                                                                     CPU:    PyTorch + qwen-asr, float32
+                                                                                     Mac:    MLX (mlx-audio), 4-bit / 8-bit
+--speakers N: Silero VAD -> WavLM voice embeddings -> clustering -> per-speaker turns -> the same speech model
+```
+
+- `localtranscribe/backends/` holds the MLX and PyTorch backends behind one interface; `mlx` is imported only on a Mac.
+- `localtranscribe/textutil.py` cuts the audio and cleans the text identically on every platform. The chunker is
+  adapted from `qwen-asr` with two changes: audio up to 25 s stays in one piece, and no cut leaves a final piece
+  shorter than 3 s (the model used to invent a word on half-second scraps, raising WER from 2.6 % to 3.1 %).
+- `localtranscribe/precheck.py` is the hardware check; `devices.py` applies the same rules, so `--model auto` and the
+  check always agree. `config.py` holds every model name and threshold.
+- `--context` becomes the model's system prompt on both backends.
+
+## Development
+
+```bash
+python -m unittest discover -s tests -v                                    # unit tests, no model needed
+python benchmark/download_fleurs.py --n 100                                # FLEURS clips into benchmark/data/ (~90 MB)
+python benchmark/bench.py --data benchmark/data/fleurs_it --model best     # WER, speed, peak memory
 python benchmark/make_longform.py --data benchmark/data/fleurs_it --out long.wav
 ./transcribe.sh long.wav --out-dir out && python benchmark/score_long.py --data benchmark/data/fleurs_it --hyp out/long.md
-python benchmark/diar_test.py --data benchmark/data/fleurs_it     # two-speaker check of --speakers
-python -m unittest discover -s tests -v                           # unit tests, no model needed (the hardware check runs on mocked machines)
+python benchmark/diar_test.py --data benchmark/data/fleurs_it              # two-speaker check of --speakers
+bash mac_selftest.sh                                                       # Mac: all presets, batch sizes, speakers; writes mac_selftest_report.txt
 ```
 
-(On Windows use `.venv\Scripts\python.exe` instead of `python`, and `transcribe.bat` instead of `./transcribe.sh`.)
+On Windows use `.venv\Scripts\python.exe` and `transcribe.bat`. The self-test report contains no personal data (home
+folder, user name and host name are removed); it is what the Mac rows above come from.
 
-### For the maintainer: the Mac self-test
+Linux (manual): `uv venv --python 3.11 .venv`, then `uv pip install --index-strategy unsafe-best-match -r
+requirements-windows.txt` (NVIDIA) or `-r requirements-cpu.txt`, then `PYTHONPATH=. .venv/bin/python -m localtranscribe file.m4a`.
 
-First run: M2 MacBook Air, 8 GB, the default `--n 100` (the Mac rows above). After `bash setup_mac.sh` on a Mac run:
+## Roadmap
 
-```
-bash mac_selftest.sh          # about an hour; add --n 30 for a quicker run
-```
+Next: a `[hh:mm:ss]` timestamp on every paragraph; then a local review page (editable transcript beside the audio,
+click a timestamp to jump there); then local AI correction that only chooses among the ASR model's own alternatives
+at low-confidence words, guarded by a rule checker and confirmed by you. Details in [ROADMAP.md](ROADMAP.md).
 
-It prints the download sizes first, then records the machine (chip, memory, macOS, package versions, and what the
-hardware check detects and recommends there), and for the
-presets `Qwen3-ASR-0.6B-8bit`, `1.7B-4bit` and `1.7B-8bit`: WER, real-time factor, peak MLX memory, peak process
-memory and model load time; a comparison of batch sizes 1, 2 and 4; and a `--speakers 2` test (torch device used,
-peak memory). Each step runs in its own process, so a failure or an out-of-memory kill is recorded and the run
-continues. Everything is written to **`mac_selftest_report.txt`** (no personal data: home folder, user name and host
-name are removed). Send that file back. Then adjust `MAC_BEST_MIN_RAM_GB`, `MAC_MODELS` and the batch sizes in
-`localtranscribe/config.py`.
+## Contributing
 
----
+Issues and pull requests are welcome. Before opening one: run the unit tests, keep to the standard library where
+possible (new dependencies are a discussion, not a default), and if you touch the chunker, the prompts or the model
+presets, include `benchmark/bench.py` numbers before and after.
 
 ## Troubleshooting
 
 - **"has not been downloaded yet"**: run the setup script again while online.
-- **Windows: "Could not create the Python environment"**: no internet, or a company proxy blocking `github.com`
-  (uv downloads Python from there). Install Python 3.11 first, then run the setup again.
+- **Windows: "Could not create the Python environment"**: no internet, or a proxy blocking `github.com` (uv downloads
+  Python from there). Install Python 3.11 first, then run the setup again.
 - **Out of memory**: use `--model light`, or `--batch-size 1`, or close other programs.
-- **"Not enough free disk space"** during setup: free some space (the message says how much), or choose the smaller
+- **"Not enough free disk space"** during setup: free some space (the message says how much), choose the smaller
   model (`setup_windows.bat light`), or move the model cache with the `HF_HOME` environment variable.
 - **The NVIDIA card is not used**: run `check_hardware.bat`; it says whether the card is too old for the GPU build of
-  PyTorch, or the driver is older than 570.65 (Windows) / 570.26 (Linux) and must be updated from nvidia.com/drivers.
-  Then run the check again and the setup again.
+  PyTorch or the driver must be updated from nvidia.com/drivers. Then run the setup again.
 - **A recording gives an empty or short text**: the file may have no audio track; try another file.
 - **Mac: "cannot be opened because the developer cannot be verified"**: right-click the file, choose **Open**.
+
+## Privacy
+
+Everything runs on your computer. Setup downloads the models from Hugging Face and the Python packages from PyPI;
+afterwards the launchers set `HF_HUB_OFFLINE=1`, so neither the audio nor the transcripts ever leave the machine.
+
+## License
+
+LocalTranscribe is released under the [Apache License 2.0](LICENSE). The audio chunker and repetition filter in
+`localtranscribe/textutil.py` are adapted from [`qwen-asr`](https://github.com/QwenLM/Qwen3-ASR) (Apache-2.0,
+copyright The Alibaba Qwen team), with the changes described above.
+
+What it downloads and uses:
+
+| Component | License |
+|---|---|
+| Qwen3-ASR models (`Qwen/Qwen3-ASR-1.7B`, `-0.6B`) and the `qwen-asr` package | Apache-2.0 |
+| MLX conversions (`mlx-community/Qwen3-ASR-...`) | Apache-2.0 (as the originals) |
+| MLX, `mlx-audio`, `mlx-lm` | MIT |
+| Silero VAD | MIT |
+| WavLM speaker model `microsoft/wavlm-base-plus-sv` (used by `--speakers`) | The model card points to the license of Microsoft's UniSpeech repository (CC BY-SA 3.0); the WavLM code (microsoft/unilm) is MIT. The weights are not included here; setup downloads them from Hugging Face. |
+| PyTorch, transformers, scikit-learn, PyAV | BSD / Apache-2.0 (PyAV bundles FFmpeg libraries under their own LGPL/GPL terms) |
+| FLEURS test clips (tests and benchmark) | CC-BY-4.0, Google; attribution in [`tests/README.md`](tests/README.md) |
+
+## Acknowledgements
+
+The Qwen team for Qwen3-ASR and the `qwen-asr` reference implementation; the MLX and `mlx-audio` maintainers and the
+`mlx-community` for the Apple Silicon conversions; Silero for the VAD; Microsoft for WavLM; Google for FLEURS.
 
 ---
 
 ## Guida rapida (italiano)
 
-**A cosa serve.** Trascrive registrazioni audio e video in italiano (interviste, telefonate, riunioni) in un file di
-testo, **direttamente sul tuo computer**: dopo l'installazione non serve internet e nessun file esce dal computer.
+**A cosa serve.** Trascrive registrazioni audio e video in italiano (interviste, telefonate, riunioni, lezioni) in un
+file di testo, **direttamente sul tuo computer**: dopo l'installazione non serve internet e nessun file esce dal
+computer.
 
 **Requisiti.** Mac con chip Apple (M1 o successivi) e macOS 14 o più recente (i Mac Intel non sono supportati),
 oppure PC Windows (meglio con scheda video NVIDIA). Circa 4 GB di spazio libero su Mac.
 
 **Installazione su Mac (una volta sola)**
 
-1. Scarica il progetto da GitHub: pulsante verde **Code**, poi **Download ZIP** (devi aver fatto il login). Apri lo ZIP
-   e sposta la cartella in Documenti. (In alternativa: `git clone`; alla prima volta il Mac può chiedere di installare
-   gli "strumenti da riga di comando": conferma con **Installa**.)
+1. Scarica il progetto: [questo link](https://github.com/Blimp3/LocalTransciber/archive/refs/heads/main.zip) scarica
+   uno ZIP; aprilo e sposta la cartella in Documenti. (In alternativa: `git clone https://github.com/Blimp3/LocalTransciber.git`;
+   la prima volta il Mac può chiedere di installare gli "strumenti da riga di comando": conferma con **Installa**.)
 2. Apri **Terminale** (Cmd+Spazio, scrivi *Terminale*). Scrivi `cd ` (con lo spazio), trascina dentro la cartella del
    progetto e premi Invio.
 3. Scrivi `bash setup_mac.sh` e premi Invio. Ci vogliono 10-20 minuti: scarica programmi e modelli (circa 3 GB in tutto).
+   Il programma controlla il computer (memoria, spazio libero) e propone il modello adatto: premi Invio per accettare.
 4. Per sapere quanta memoria ha il tuo Mac: menu Apple  > **Informazioni su questo Mac**. Con 8 GB o più viene usato
    il modello più accurato (misurato su un MacBook Air M2 da 8 GB).
 
 **Uso su Mac.** Doppio clic su **`Trascrivi.command`**. La prima volta, se macOS non lo apre: clic destro sul file,
 **Apri**, poi ancora **Apri**. Scegli uno o più file audio o video; puoi anche far separare due persone che parlano
-(telefonate). Il testo viene salvato accanto a ogni file audio (stesso nome, estensione `.md`) e compare nel Finder.
+(telefonate). Il testo viene salvato accanto a ogni file (stesso nome, estensione `.md`) e compare nel Finder.
 
 **Consigli per il MacBook Air.** Tienilo **collegato all'alimentazione** per i file lunghi (non ha ventola e rallenta
 quando si scalda). Con 8 GB di memoria **chiudi i programmi pesanti** (browser con molte schede, videochiamate) prima
@@ -358,12 +300,16 @@ di trascrivere.
 
 **Windows.** Doppio clic su `setup_windows.bat` (una volta sola), poi **trascina i file audio su `transcribe.bat`**.
 
-**Controllo del computer.** All'installazione il programma controlla il computer (memoria, scheda video, spazio libero)
-e propone il modello adatto: premi Invio per accettare. Puoi ripetere il controllo quando vuoi con `check_hardware.bat`
-(Windows) o `bash check_hardware.sh` (Mac).
+**Controllo del computer.** Puoi ripetere il controllo quando vuoi con `check_hardware.bat` (Windows) o
+`bash check_hardware.sh` (Mac).
 
 **Suggerimento.** Dalla riga di comando puoi indicare nomi e termini tecnici che compaiono nella registrazione con
 `--context "Mario Rossi, Politecnico di Milano"`: la loro trascrizione sarà più precisa. Per separare i parlanti
 usa `--speakers 2`: il risultato è `[00:01:23] Parlante 1: ...` e `Parlante 2: ...`.
 
 **Privacy.** Tutto avviene sul tuo computer. Internet serve solo durante l'installazione per scaricare i modelli.
+
+---
+
+<sub>Yes, the repository is called <b>LocalTransc<i>i</i>ber</b>: an <i>r</i> went missing when it was created, and it
+stays that way. The program is LocalTranscribe.</sub>
