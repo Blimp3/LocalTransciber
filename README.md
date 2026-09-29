@@ -30,9 +30,10 @@ after that everything runs offline on your Apple Silicon Mac, your NVIDIA GPU, o
 - **Speaker separation.** `--speakers 2` turns a two-person call into `[00:01:23] Parlante 1: ...` lines.
 - **Context hints.** `--context "Mario Rossi, LoRaWAN"` helps names and jargon come out spelled right.
 - **Word confidence** (Mac). `--confidence` records each word-piece's probability and the model's alternatives, the
-  basis for the upcoming review tool (see the [roadmap](ROADMAP.md)).
-- **Double-click launchers** for people who never open a terminal: `Trascrivi.command` on Mac, drag-and-drop onto
-  `transcribe.bat` on Windows.
+  basis for the upcoming AI correction (see the [roadmap](ROADMAP.md)).
+- **Review page.** A local page with the editable transcript beside the audio; click a timestamp to jump there.
+- **Double-click launchers** for people who never open a terminal: `Trascrivi.command` and `Rivedi.command` on
+  Mac, drag-and-drop onto `transcribe.bat` on Windows.
 
 ## Requirements
 
@@ -105,6 +106,14 @@ timestamp. With `--speakers`, each turn starts with the timestamp and the speake
 | `--confidence` | also save each word-piece's confidence and the model's alternatives to `<recording>.review.json` (Apple Silicon only for now) |
 | `--stats` | print the device, model, speed and peak memory at the end |
 | `--chunk 20` | seconds per piece. Leave at 20: longer pieces are measurably less accurate |
+
+### Review a transcript
+
+Double-click `Rivedi.command` (Mac) and pick the recording, or run
+`.venv/bin/python -m localtranscribe.review recording.m4a` (Windows:
+`.venv\Scripts\python.exe -m localtranscribe.review recording.m4a`). The transcript is on the left and the audio on
+the right; click a timestamp to jump the audio there, edit the text, and press *Salva* to write the `.md` back. The
+page runs only on this computer (127.0.0.1).
 
 ## Models
 
@@ -216,9 +225,8 @@ requirements-windows.txt` (NVIDIA) or `-r requirements-cpu.txt`, then `PYTHONPAT
 
 ## Roadmap
 
-Next: a local review page (editable transcript beside the audio, click a timestamp to jump there); then local AI
-correction that only chooses among the ASR model's own alternatives at low-confidence words, guarded by a rule
-checker and confirmed by you. Details in [ROADMAP.md](ROADMAP.md).
+The review page is done. Next: local AI correction that only chooses among the ASR model's own alternatives at
+low-confidence words, guarded by a rule checker and confirmed by you. Details in [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 
@@ -293,6 +301,9 @@ oppure PC Windows (meglio con scheda video NVIDIA). Circa 4 GB di spazio libero 
 **Uso su Mac.** Doppio clic su **`Trascrivi.command`**. La prima volta, se macOS non lo apre: clic destro sul file,
 **Apri**, poi ancora **Apri**. Scegli uno o più file audio o video; puoi anche far separare due persone che parlano
 (telefonate). Il testo viene salvato accanto a ogni file (stesso nome, estensione `.md`) e compare nel Finder.
+
+**Rivedere il testo.** Doppio clic su **`Rivedi.command`** e scegli la registrazione: nel browser vedi il testo a sinistra
+e l'audio a destra. Clicca su un orario per ascoltare quel punto, correggi il testo e premi **Salva**.
 
 **Consigli per il MacBook Air.** Tienilo **collegato all'alimentazione** per i file lunghi (non ha ventola e rallenta
 quando si scalda). Con 8 GB di memoria **chiudi i programmi pesanti** (browser con molte schede, videochiamate) prima

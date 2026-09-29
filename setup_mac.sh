@@ -49,7 +49,7 @@ say
 
 # Files downloaded as a ZIP lose their executable bit and get a 'quarantine' flag; undo both so that
 # transcribe.sh and Trascrivi.command work (a double-click may still ask once: right-click > Open).
-chmod +x setup_mac.sh transcribe.sh Trascrivi.command mac_selftest.sh check_hardware.sh 2>/dev/null || true
+chmod +x setup_mac.sh transcribe.sh Trascrivi.command Rivedi.command mac_selftest.sh check_hardware.sh 2>/dev/null || true
 xattr -dr com.apple.quarantine . 2>/dev/null || true
 
 # --- uv -----------------------------------------------------------------------------------
@@ -101,6 +101,7 @@ say "============================================================"
 say "  Setup complete."
 say "  Double-click  Trascrivi.command  in Finder to transcribe audio or video files,"
 say "  or use  ./transcribe.sh file.m4a  in Terminal."
+say "  Double-click  Rivedi.command  to review a transcript next to its audio."
 say "  To change the model later, run  bash check_hardware.sh  and then this setup again."
 say "  (If macOS refuses to open Trascrivi.command: right-click it > Open > Open, once.)"
 say "============================================================"

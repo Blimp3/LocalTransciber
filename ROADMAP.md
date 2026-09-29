@@ -16,17 +16,10 @@ review and correction on top without changing how it is used.
   speaker separation), plus a fresh-clone install test on a Mac.
 - `--confidence` (Mac): each word-piece's probability and the model's top alternatives are saved to
   `<recording>.review.json`, one entry per paragraph, without changing the transcript.
+- Review page (`Rivedi.command`, `python -m localtranscribe.review`): editable transcript beside the audio on
+  `127.0.0.1`, click a timestamp to jump, save writes the `.md` back.
 
-## Next: a review tool
-
-- A local page served by Python's built-in `http.server` on `127.0.0.1` and opened in the default browser. No new
-  dependencies.
-- The editable transcript on the left, the audio on the right. Clicking a paragraph's timestamp jumps the audio there;
-  saving writes the `.md` back.
-- The audio is served as the decoded 16 kHz WAV, so every input format plays in every browser.
-- Entry point `python -m localtranscribe.review <recording>` plus a double-click launcher.
-
-## Then: local AI correction, with guardrails
+## Next: local AI correction, with guardrails
 
 The goal is fewer mistakes without inventing text. Four parts, each one a safety net for the previous:
 
