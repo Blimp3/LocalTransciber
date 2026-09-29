@@ -156,9 +156,9 @@ class DeviceChoiceTests(unittest.TestCase):
     def test_mac_batch_and_device(self):
         with mock.patch.object(devices, "is_apple_silicon", return_value=True):
             with mock.patch.object(devices, "total_ram_gb", return_value=8.0):
-                self.assertEqual(devices.choose_batch_size(0, "mps", "x"), config.MAC_BATCH_SIZE_LOW_RAM)
+                self.assertEqual(devices.choose_batch_size(0, "mps", "x"), config.MAC_BATCH_SIZE)
             with mock.patch.object(devices, "total_ram_gb", return_value=24.0):
-                self.assertEqual(devices.choose_batch_size(0, "mps", "x"), config.MAC_BATCH_SIZE_HIGH_RAM)
+                self.assertEqual(devices.choose_batch_size(0, "mps", "x"), config.MAC_BATCH_SIZE)
             self.assertEqual(devices.choose_batch_size(5, "mps", "x"), 5)
             self.assertEqual(devices.resolve_device("auto"), "mps")
             self.assertEqual(devices.resolve_device("cpu"), "cpu")

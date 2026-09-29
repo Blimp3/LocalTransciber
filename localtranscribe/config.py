@@ -40,12 +40,13 @@ MAC_MODELS = {
     "light": "mlx-community/Qwen3-ASR-0.6B-8bit",
 }
 # --model auto: "best" when the Mac has at least this much TOTAL unified memory (GB), otherwise
-# "light". Measured (M2 8 GB, 30 FLEURS clips): peak GPU memory light 1.8, best 2.5, 1.7B-8bit 3.3 GB, so all
-# fit on 8 GB, and best (4-bit) halves light's WER (2.8% vs 5.6%) at 9.5x real time (light 17x).
+# "light". Measured (M2 8 GB, 100 FLEURS clips, 25.3 min): peak GPU memory light 1.8, best 2.5, 1.7B-8bit 3.3 GB,
+# so all fit on 8 GB, and best (4-bit) makes about 40% fewer mistakes than light (WER 3.5% vs 5.7%) at 6.4x real
+# time (light 18.7x). Speed varies with memory pressure (6-12x measured for best).
 MAC_BEST_MIN_RAM_GB = 8
-# Measured Mac numbers for the plain-words descriptions (M2 8 GB, 30 FLEURS Italian clips).
-MAC_WER_PERCENT = {"best": 2.8, "light": 5.6}
-MAC_REALTIME_X = {"best": 9.5, "light": 17}
+# Measured Mac numbers for the plain-words descriptions (M2 8 GB, 100 FLEURS Italian clips).
+MAC_WER_PERCENT = {"best": 3.5, "light": 5.7}
+MAC_REALTIME_X = {"best": 6.4, "light": 18.7}
 MAC_BEST_PEAK_GB = 2.5
 
 # Extra Mac presets that mac_selftest.sh also measures (name -> repo). The 4-bit 1.7B model is
@@ -58,10 +59,10 @@ MAC_SELFTEST_MODELS = {
 
 # Mac batch size (pieces decoded together). Small on purpose: every extra piece in a batch adds
 # activation memory and a fanless MacBook Air throttles under sustained load anyway.
-# M2 8 GB, best 4-bit, 30 clips: batch 1 / 2 / 4 all about 11.5x real time, batching only adds process memory.
-MAC_BATCH_SIZE_LOW_RAM = 1     # total RAM below MAC_BATCH_MIN_RAM_GB
-MAC_BATCH_SIZE_HIGH_RAM = 2
-MAC_BATCH_MIN_RAM_GB = 16      # not measured on a 16 GB Mac yet
+# M2 8 GB, best 4-bit, first 30 clips: batch 1 5.4x, batch 2 3.3x, batch 4 6.8x real time. Batch 2 was slower than
+# batch 1 in 3 of 4 measurements and never faster, and batching changes some transcripts. No 16 GB Mac was
+# available to test, so batch 1 everywhere. --batch-size still overrides.
+MAC_BATCH_SIZE = 1
 
 # Upstream Hugging Face ids the user may type on a Mac -> the MLX repo that replaces them.
 MAC_MODEL_ALIASES = {

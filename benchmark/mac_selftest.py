@@ -382,8 +382,7 @@ def main(argv=None):
     rep.add(f"Date (UTC): {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}")
     rep.add(f"Repository version: {localtranscribe.__version__}")
     rep.add("Auto-selection rule in this version: best model if total RAM >= "
-            f"{config.MAC_BEST_MIN_RAM_GB} GB, else light; Mac batch size {config.MAC_BATCH_SIZE_LOW_RAM} below "
-            f"{config.MAC_BATCH_MIN_RAM_GB} GB / {config.MAC_BATCH_SIZE_HIGH_RAM} at or above that.")
+            f"{config.MAC_BEST_MIN_RAM_GB} GB, else light; Mac batch size {config.MAC_BATCH_SIZE}.")
     rep.add(f"Presets under test: {', '.join(m.split('/')[-1] for m in args.models)}")
     machine_info(rep)
 

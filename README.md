@@ -29,8 +29,8 @@ you can accept or change it, and force either later with `--model`.
 
 | Model | Download | Memory it needs | Accuracy (Italian) | Speed |
 |---|---|---|---|---|
-| **best**: Qwen3-ASR-1.7B | 4.7 GB (NVIDIA) / 1.6 GB (Mac, 4-bit) | NVIDIA: **5.2 GB** video memory (measured, 4.0 GB at the slowest setting); Mac: **2.5 GB** (measured) | word error rate **2.4 - 2.7 %** (Mac, 4-bit: 2.8 %) | NVIDIA RTX 6000: **26x** real time (1 hour of audio in 2.3 minutes); M2 Mac: **9.5x** |
-| **light**: Qwen3-ASR-0.6B | 1.9 GB (NVIDIA / CPU) / 1.0 GB (Mac, 8-bit) | NVIDIA: **2.8 GB** video memory (measured); CPU: about 6 GB RAM while loading (measured); Mac: **1.8 GB** (measured) | word error rate **4.4 - 5.8 %** (Mac: 5.6 %) | NVIDIA: 27x; CPU (6-core Xeon): **2.6x** (1 hour in 23 minutes); M2 Mac: **17x** |
+| **best**: Qwen3-ASR-1.7B | 4.7 GB (NVIDIA) / 1.6 GB (Mac, 4-bit) | NVIDIA: **5.2 GB** video memory (measured, 4.0 GB at the slowest setting); Mac: **2.5 GB** (measured) | word error rate **2.4 - 2.7 %** (Mac, 4-bit: 3.5 %) | NVIDIA RTX 6000: **26x** real time (1 hour of audio in 2.3 minutes); M2 Mac: **6.4x** (6 - 12x depending on memory pressure) |
+| **light**: Qwen3-ASR-0.6B | 1.9 GB (NVIDIA / CPU) / 1.0 GB (Mac, 8-bit) | NVIDIA: **2.8 GB** video memory (measured); CPU: about 6 GB RAM while loading (measured); Mac: **1.8 GB** (measured) | word error rate **4.4 - 5.8 %** (Mac: 5.7 %) | NVIDIA: 27x; CPU (6-core Xeon): **2.6x** (1 hour in 23 minutes); M2 Mac: **19x** |
 
 Which one is chosen (by the hardware check, and by `--model auto`, which follows the same rules):
 
@@ -40,10 +40,10 @@ Which one is chosen (by the hardware check, and by `--model auto`, which follows
   the hardware check existed the limit for *best* was 12 GB; measured, it needs 4.0 GB at the slowest setting and
   5.2 GB at batch 8.)
 - **Mac:** *best* (1.7B, 4-bit) if the Mac has 8 GB of memory or more, otherwise *light* (0.6B, 8-bit). Measured on
-  an M2 MacBook Air with 8 GB: *best* halves the mistakes of *light* and still runs at 9.5x real time.
+  an M2 MacBook Air with 8 GB: *best* makes about 40% fewer mistakes than *light* and still runs at about 6x real time.
 - **CPU only:** always *light*.
 
-Mac numbers come from 30 FLEURS clips (7 minutes) on an M2 MacBook Air with 8 GB. "Speed 26x" means one minute of audio takes about 2.3 seconds.
+Mac numbers come from 100 FLEURS clips (25 minutes) on an M2 MacBook Air with 8 GB. "Speed 26x" means one minute of audio takes about 2.3 seconds.
 
 ---
 
@@ -137,7 +137,7 @@ runs before any package is installed.
 | NVIDIA card with about 3 - 6 GB | **light** on the GPU | |
 | NVIDIA card below 3 GB, older than GTX 16 / RTX 20 series (compute capability below 7.5), or driver older than 570.65 (Windows) / 570.26 (Linux) | **light** on the processor | the check says which reason applies; updating the driver enables the GPU |
 | No NVIDIA card or driver | **light** on the processor | warns below 8 GB of memory; about 2.6x real time on a 6-core Xeon (1 hour of audio in about 23 minutes), yours may differ |
-| Apple Silicon Mac (8 GB or more) | **best** | measured on an M2 Air with 8 GB: about 2.5 GB peak, 9.5x real time; batch size 2 from 16 GB; 8 GB: "close memory-heavy apps"; MacBook Air: "keep it plugged in for long files" |
+| Apple Silicon Mac (8 GB or more) | **best** | measured on an M2 Air with 8 GB: about 2.5 GB peak, 6.4x real time; batch size 1; 8 GB: "close memory-heavy apps"; MacBook Air: "keep it plugged in for long files" |
 | Intel Mac, macOS older than 14, or Python under Rosetta | nothing | the setup stops and explains what to do |
 | Not enough free disk space | nothing | the setup stops; it says which choice would fit |
 
@@ -199,7 +199,7 @@ transcribe.bat interview.m4a --context "Mario Rossi, Politecnico di Milano, LoRa
 
 - **Which model you get.** The [hardware check](#hardware-check) reads your memory (you can also see it under
   **Apple menu > About This Mac**). With **8 GB or more** (8, 16, 24 GB) it recommends the *best* model (Qwen3-ASR-1.7B, 4-bit);
-  the *light* model (Qwen3-ASR-0.6B, 8-bit) is faster (17x real time) and can be chosen with `bash setup_mac.sh light`
+  the *light* model (Qwen3-ASR-0.6B, 8-bit) is faster (about 19x real time) and can be chosen with `bash setup_mac.sh light`
   or `./transcribe.sh file.m4a --model light`.
 - **Keep it plugged in** for long recordings. The Air has no fan, so it slows down when it gets hot; on battery
   it slows down further.
@@ -220,14 +220,15 @@ punctuation; lower is better.
 | best (1.7B), NVIDIA | **2.57 %** | 2.74 % | **2.44 %** | 25 - 26x | 5.2 GB (batch 8) |
 | light (0.6B), NVIDIA | 4.38 % | 5.82 % | 5.18 % | 27x | 2.8 GB (batch 8) |
 | light (0.6B), CPU float32 | - | 4.68 % (first 10 clips of set B; same as GPU) | - | 2.6x | about 6 GB RAM |
-| best 4-bit (1.7B), Apple MLX | - | 2.81 % (30 clips) | - | 9.5x | 2.5 GB |
-| best 8-bit (1.7B), Apple MLX | - | 2.14 % (30 clips) | - | 3.5x | 3.3 GB |
-| light 8-bit (0.6B), Apple MLX | - | 5.62 % (30 clips) | - | 17x | 1.8 GB |
+| best 4-bit (1.7B), Apple MLX | - | 3.51 % | - | 6.4x | 2.5 GB |
+| best 8-bit (1.7B), Apple MLX | - | 2.89 % | - | 2.3x | 3.3 GB |
+| light 8-bit (0.6B), Apple MLX | - | 5.74 % | - | 18.7x | 1.8 GB |
 
 Set A is the 100-clip set used to evaluate the previous version of this tool; set B is what
 `benchmark/download_fleurs.py` downloads (the first 100 recordings of the test archive, the set the Mac
-self-test uses). The Mac rows are the first 30 clips of set B (7.0 minutes) on an M2 MacBook Air with 8 GB, greedy
-decoding, batch 1, from `mac_selftest.sh --n 30`; they are not comparable to the 100-clip NVIDIA rows.
+self-test uses). The Mac rows are all 100 clips of set B (25.3 minutes) on an M2 MacBook Air with 8 GB, greedy
+decoding, batch 1, from `mac_selftest.sh`, so they compare directly with the NVIDIA set B column (float16: best
+2.74 %, light 5.82 %). Mac speed varies with memory pressure (best measured 6 - 12x).
 
 Peak video memory by batch size (best 1.7B / light 0.6B): 1: 4.0 / 1.7 GB, 2: 4.1 / 1.8, 4: 4.5 / 2.1, 8: 5.2 / 2.8,
 16: 6.5 / 4.1. Speed (best): 4.7x / 7.4x / 12.9x / 22x / 32x for the same batch sizes.
@@ -295,7 +296,7 @@ python -m unittest discover -s tests -v                           # unit tests, 
 
 ### For the maintainer: the Mac self-test
 
-First run: M2 MacBook Air, 8 GB, `--n 30` (the Mac rows above). After `bash setup_mac.sh` on a Mac run:
+First run: M2 MacBook Air, 8 GB, the default `--n 100` (the Mac rows above). After `bash setup_mac.sh` on a Mac run:
 
 ```
 bash mac_selftest.sh          # about an hour; add --n 30 for a quicker run

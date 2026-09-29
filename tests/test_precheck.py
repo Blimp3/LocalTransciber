@@ -100,13 +100,10 @@ class RuleTests(unittest.TestCase):
         self.assertIsNone(precheck.nvidia_preset_for(None))
 
     def test_mac_presets_use_the_measured_rule(self):
-        self.assertEqual((config.MAC_BEST_MIN_RAM_GB, config.MAC_BATCH_MIN_RAM_GB), (8, 16))  # from the M2 8 GB self-test
+        self.assertEqual(config.MAC_BEST_MIN_RAM_GB, 8)  # from the M2 8 GB self-test
         for ram, want in ((8, "best"), (7.6, "best"), (16, "best"), (None, "light")):
             self.assertEqual(precheck.mac_preset_for(ram), want, ram)
-        self.assertEqual((config.MAC_BATCH_SIZE_LOW_RAM, config.MAC_BATCH_SIZE_HIGH_RAM), (1, 2))
-        self.assertEqual(precheck.mac_batch_size(8), 1)
-        self.assertEqual(precheck.mac_batch_size(16), 2)
-        self.assertEqual(precheck.mac_batch_size(24), 2)
+        self.assertEqual((config.MAC_BATCH_SIZE, precheck.mac_batch_size()), (1, 1))  # batch 1 on every Mac
 
     def test_batch_size_from_free_memory(self):
         self.assertEqual(precheck.nvidia_batch_size("best", 22.0), 8)
@@ -159,7 +156,7 @@ class RuleTests(unittest.TestCase):
 
 class MacTests(Sandbox):
     def test_m2_air_by_memory(self):
-        for ram, preset, batch in ((8, "best", 1), (16, "best", 2), (24, "best", 2)):
+        for ram, preset, batch in ((8, "best", 1), (16, "best", 1), (24, "best", 1)):
             code, settings, out = self.run_check(mac(ram=ram))
             self.assertEqual(code, 0, out)
             self.assertEqual((settings["preset"], settings["device"], settings["batch_size"]), (preset, "mps", batch), ram)
@@ -863,7 +860,7 @@ class RunConfigTests(unittest.TestCase):
         with mock.patch.object(devices, "is_apple_silicon", return_value=True), \
                 mock.patch.object(devices, "total_ram_gb", return_value=8.0), mock.patch.object(devices, "check_platform"):
             device, repo, batch, _ = devices.resolve_run_config(None, None, 0, saved=saved)
-        self.assertEqual((device, repo, batch), ("mps", config.MAC_MODELS["best"], 1))  # batch lowered by the 8 GB rule
+        self.assertEqual((device, repo, batch), ("mps", config.MAC_MODELS["best"], 1))  # the saved batch is replaced: Mac batch is always 1
 
 
 class CliTests(Sandbox):

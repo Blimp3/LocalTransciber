@@ -107,3 +107,23 @@ hardware check should recommend **light**.
     existing `sampler=` argument (chosen-token probability + top-k per step, both paths). The single-piece
     `stream_generate` also yields full-vocab logprobs.
   - Open: the full `--n 100` self-test, batch 2 on a 16 GB Mac. Next: Phase 2.
+- 2026-09-29, later: full self-test, mlx-lm and word-piece confidence (not committed yet).
+  - Full `mac_selftest.sh` (100 clips, 25.3 min of audio, 22.8 min run, no errors, speakers PASS on best):
+    0.6B-8bit 5.74% WER, 18.7x, 1.8 GB; 1.7B-4bit (best) 3.51%, 6.4x, 2.5 GB; 1.7B-8bit 2.89%, 2.3x, 3.3 GB.
+    NVIDIA fp16 on the same set: 2.74% / 5.82%. Best on the Mac is about 40% fewer mistakes than light, not half.
+    Speed swings with memory pressure (best measured 6.4-11.6x; this run started with ~2 GB free and swap in use).
+  - Batch 2 was slower than batch 1 in 3 of 4 runs and never faster, and there's no 16 GB Mac to test on:
+    `MAC_BATCH_SIZE = 1` on every Mac (the 16 GB batch-2 rule was removed). The README and precheck text now use
+    the 100-clip numbers.
+  - `mlx-lm==0.31.3` is installed and pinned in `requirements-mac.txt`; it added only protobuf, with mlx /
+    mlx-audio / transformers unchanged. Smoke test with `Qwen3-0.6B-4bit`: 0.44 GB peak, ~15 tok/s. Asked to fix
+    "e o comprato", it also dropped "ho", which shows why the LLM must only choose among the ASR alternatives.
+  - `--confidence` (MLX only, opt-in): a greedy recording sampler (`_Recorder` in `backends/mlx_qwen.py`) keeps
+    each chosen word-piece's probability and the top 5 alternatives, on both the single-piece (`stream_generate`)
+    and the batched path. It writes `<recording>.review.json` (git-ignored) with one entry per `.md` paragraph.
+    The `.md` is unchanged, transcripts are identical with and without recording (30 clips, batch 1 and 2),
+    +2.4% time, same peak memory. 6% of word-pieces fall below p 0.9 and 0.7% below p 0.5. Not supported with
+    `--speakers` or on the torch path yet. Tests: 146 pass (`tests/test_confidence.py`, 7 new).
+  - Open: the correction model choice (Qwen3-0.6B/1.7B 4-bit?), and ASR + LLM measured together on 8 GB. Grouping
+    word-pieces into words and flagging unsure ones. Next: commit this, then Phase 2 (paragraph timestamps; the
+    sidecar can take each paragraph's offset then).

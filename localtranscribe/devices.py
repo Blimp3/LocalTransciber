@@ -209,7 +209,7 @@ def choose_batch_size(requested, device, repo, mem_gb=None):
     if requested:
         return max(1, int(requested))
     if is_apple_silicon():
-        return precheck.mac_batch_size(total_ram_gb())
+        return precheck.mac_batch_size()
     if device == "cuda":
         m = cuda_memory_gb()
         free = m[1] if m else (mem_gb or 8)

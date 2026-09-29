@@ -99,9 +99,8 @@ def nvidia_batch_size(preset, free_gb):
     return max(1, min(config.NVIDIA_MAX_BATCH_SIZE, 1 + extra))
 
 
-def mac_batch_size(total_gb):
-    high = total_gb is not None and total_gb >= config.MAC_BATCH_MIN_RAM_GB - config.MEMORY_ROUNDING_TOLERANCE_GB
-    return config.MAC_BATCH_SIZE_HIGH_RAM if high else config.MAC_BATCH_SIZE_LOW_RAM
+def mac_batch_size():
+    return config.MAC_BATCH_SIZE
 
 
 def cpu_batch_size(ram_gb):
@@ -540,7 +539,7 @@ def _assess_mac(profile, rep):
     if ram is None:
         rep["warnings"].append("Could not read the memory size of this Mac; assuming the light model.")
     preset = mac_preset_for(ram)
-    batch = mac_batch_size(ram)
+    batch = mac_batch_size()
     rep["platform"] = "mac"
     ram_txt = fmt_gb(ram) + " GB"
     best_summary = (f"about {config.MAC_WER_PERCENT['best']:g} mistakes per 100 words and about "
