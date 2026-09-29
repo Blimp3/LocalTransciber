@@ -86,7 +86,7 @@ def nvidia_preset_for(total_gb):
 
 
 def mac_preset_for(total_gb):
-    """'best' with enough unified memory, else 'light'. PROVISIONAL rule (see config.MAC_BEST_MIN_RAM_GB)."""
+    """'best' with enough unified memory, else 'light'. Measured rule (see config.MAC_BEST_MIN_RAM_GB)."""
     if total_gb is not None and total_gb >= config.MAC_BEST_MIN_RAM_GB - config.MEMORY_ROUNDING_TOLERANCE_GB:
         return "best"
     return "light"
@@ -100,7 +100,7 @@ def nvidia_batch_size(preset, free_gb):
 
 
 def mac_batch_size(total_gb):
-    high = total_gb is not None and total_gb >= config.MAC_BEST_MIN_RAM_GB - config.MEMORY_ROUNDING_TOLERANCE_GB
+    high = total_gb is not None and total_gb >= config.MAC_BATCH_MIN_RAM_GB - config.MEMORY_ROUNDING_TOLERANCE_GB
     return config.MAC_BATCH_SIZE_HIGH_RAM if high else config.MAC_BATCH_SIZE_LOW_RAM
 
 
@@ -543,10 +543,10 @@ def _assess_mac(profile, rep):
     batch = mac_batch_size(ram)
     rep["platform"] = "mac"
     ram_txt = fmt_gb(ram) + " GB"
-    best_summary = (f"about {_wer_text('best')} mistakes per 100 words on the PC version (not measured on a Mac yet); "
-                    "needs more memory and is slower")
-    light_summary = (f"less accurate ({_wer_text('light')} mistakes per 100 words on the PC version), "
-                     "but lighter on memory and faster")
+    best_summary = (f"about {config.MAC_WER_PERCENT['best']:g} mistakes per 100 words and about "
+                    f"{config.MAC_REALTIME_X['best']:g}x real time on an M2 Mac; needs about {config.MAC_BEST_PEAK_GB:g} GB of memory")
+    light_summary = (f"less accurate ({config.MAC_WER_PERCENT['light']:g} mistakes per 100 words on an M2 Mac), "
+                     f"but lighter on memory and faster ({config.MAC_REALTIME_X['light']:g}x real time)")
     best_warn = [] if preset == "best" else [
         f"best is tight on {ram_txt} of memory: it may be slow or run out of memory (not tested on this kind of Mac). "
         "light is the safer choice."]

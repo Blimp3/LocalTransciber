@@ -31,7 +31,7 @@ decisions and the roadmap. **Update the Status section at the end of every sessi
    `.exe`; get confidence scores from the torch/qwen-asr path).
 
 ## Roadmap
-### Phase 1: macOS testing on this Mac (NEXT)
+### Phase 1: macOS testing on this Mac (DONE 2026-09-29, see Status)
 The machine: Apple M2, 8 GB memory, macOS 27, about 53 GB free, `uv` not installed, no `.venv` yet. On 8 GB the
 hardware check should recommend **light**.
 1. `bash setup_mac.sh`. It installs `uv` with the official astral.sh installer (curl | sh). **Ask the user before
@@ -50,7 +50,7 @@ hardware check should recommend **light**.
    - In mlx-audio 0.5.7's `qwen3_asr.py`, does `_generate_chunks_batched(..., logits_processors=...)` let us record
      per-token probabilities and the top-k alternatives? That would be the confidence source for Phase 4.
 
-### Phase 2: paragraph timestamps
+### Phase 2: paragraph timestamps (NEXT)
 - `textutil.split_audio_into_chunks` already returns `(piece, offset_seconds)`; `pipeline.split_wav` drops the offset.
   Keep it, and prefix each paragraph with `[{diarize.fmt_time(offset)}] `.
 - `benchmark/bench.py` uses `split_wav` + `transcribe_pieces` directly and is unaffected. But
@@ -70,7 +70,7 @@ hardware check should recommend **light**.
   suggestions), so the `.md` stays clean.
 - **Concurrent small LLM:** a very small MLX model (0.5-1.7B, 4-bit) consumes finished paragraphs from a queue while
   ASR continues (`pipeline.transcribe_pieces` already produces results slice by slice). The 8 GB M2 is the memory
-  budget: measure ASR light + LLM together. Use a separate process if two MLX models do not work well in one.
+  budget: measure ASR best (1.7B-4bit, 2.5 GB peak) + LLM together. Use a separate process if two MLX models do not work well in one.
 - **The LLM only chooses** among the ASR alternatives at flagged positions, or leaves the word as it is.
 - **Bend checker** (`guard.bend`, compiled to a native binary, called from Python through a simple stdin/stdout
   protocol, and parallel per paragraph). A first draft of the laws, for the user to own in `LAWS.bend`:
@@ -87,3 +87,23 @@ hardware check should recommend **light**.
 ## Status
 - 2026-09-29: output switched to `.md`; Sonnet executor configured; roadmap agreed. Unit tests pass (137) with the
   system python3. Next: Phase 1.
+- 2026-09-29, Phase 1 done on the M2 Air (8 GB, macOS 27). Committed on `md-output-and-roadmap`.
+  - Setup: uv 0.12.20 (official installer, `~/.local/bin`), `.venv` Python 3.11.15, mlx 0.32.2, mlx-audio 0.5.7,
+    huggingface-hub 1.33.0. `mlx_lm` is NOT installed.
+  - Bug fixed: `setup_models` checked the cache without mlx-audio's file patterns, so hub 1.33 raised
+    IncompleteSnapshotError (no README.md / .gitattributes) and setup failed after a good download. The download and
+    both checks now share `allow_patterns()`, and there is a regression test for it.
+  - Tests: 139 pass with `.venv` and with system python3 (1 skip: qwen-asr is not installed on a Mac). Smoke test
+    WER 0 on `fleurs_it_sample`.
+  - `mac_selftest.sh --n 30`: 43.7 min (23 of them downloads), no out-of-memory, no thermal warnings, speakers PASS.
+    0.6B-8bit 5.62% WER, 17.2x real time, 1.8 GB. 1.7B-4bit 2.81%, 9.5x, 2.5 GB. 1.7B-8bit 2.14%, 3.5x, 3.3 GB.
+  - Decision (user): Mac *best* = 1.7B-4bit, recommended from 8 GB (`MAC_BEST_MIN_RAM_GB = 8`). The batch rule now
+    has its own `MAC_BATCH_MIN_RAM_GB = 16`, so 8 GB stays at batch 1. The precheck text and README use the measured
+    numbers. This Mac's saved choice is now best.
+  - Batch re-run on 4-bit: batches 1, 2 and 4 all ran at about 11.5x; batching only adds process memory. The
+    self-test's batch 2 at 0.6x (on 8-bit) did not reproduce. 8-bit was not re-run.
+  - Phase 4 findings: a local LLM needs `mlx-lm` as a new dependency (ask first) or its own loop over mlx-audio's
+    copies in `mlx_audio/lm/`. Confidence needs no mlx-audio patch: pass a recording greedy sampler through the
+    existing `sampler=` argument (chosen-token probability + top-k per step, both paths). The single-piece
+    `stream_generate` also yields full-vocab logprobs.
+  - Open: the full `--n 100` self-test, batch 2 on a 16 GB Mac. Next: Phase 2.

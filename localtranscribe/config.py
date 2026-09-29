@@ -30,18 +30,23 @@ NVIDIA_BEST_MIN_VRAM_GB = 6
 NVIDIA_LIGHT_MIN_VRAM_GB = 3   # light: 1.7 GB at batch 1 + reserve below
 
 # --------------------------------------------------------------------------------------
-# Apple Silicon: MLX (mlx-audio) with 8-bit quantised weights
+# Apple Silicon: MLX (mlx-audio) with quantised weights (best 4-bit, light 8-bit)
 # --------------------------------------------------------------------------------------
 MAC_MODELS = {
-    "best": "mlx-community/Qwen3-ASR-1.7B-8bit",
+    "best": "mlx-community/Qwen3-ASR-1.7B-4bit",
     "light": "mlx-community/Qwen3-ASR-0.6B-8bit",
 }
 # --model auto: "best" when the Mac has at least this much TOTAL unified memory (GB), otherwise
-# "light". PROVISIONAL: to be confirmed with the report of `mac_selftest.sh` on real hardware.
-MAC_BEST_MIN_RAM_GB = 16
+# "light". Measured (M2 8 GB, 30 FLEURS clips): peak GPU memory light 1.8, best 2.5, 1.7B-8bit 3.3 GB, so all
+# fit on 8 GB, and best (4-bit) halves light's WER (2.8% vs 5.6%) at 9.5x real time (light 17x).
+MAC_BEST_MIN_RAM_GB = 8
+# Measured Mac numbers for the plain-words descriptions (M2 8 GB, 30 FLEURS Italian clips).
+MAC_WER_PERCENT = {"best": 2.8, "light": 5.6}
+MAC_REALTIME_X = {"best": 9.5, "light": 17}
+MAC_BEST_PEAK_GB = 2.5
 
 # Extra Mac presets that mac_selftest.sh also measures (name -> repo). The 4-bit 1.7B model is
-# smaller than the 8-bit one but has not been measured yet.
+# smaller than the 8-bit one; it is now the "best" preset (measured), 8-bit stays for comparison.
 MAC_SELFTEST_MODELS = {
     "1.7B-8bit": "mlx-community/Qwen3-ASR-1.7B-8bit",
     "1.7B-4bit": "mlx-community/Qwen3-ASR-1.7B-4bit",
@@ -50,8 +55,10 @@ MAC_SELFTEST_MODELS = {
 
 # Mac batch size (pieces decoded together). Small on purpose: every extra piece in a batch adds
 # activation memory and a fanless MacBook Air throttles under sustained load anyway.
-MAC_BATCH_SIZE_LOW_RAM = 1     # total RAM below MAC_BEST_MIN_RAM_GB
+# M2 8 GB, best 4-bit, 30 clips: batch 1 / 2 / 4 all about 11.5x real time, batching only adds process memory.
+MAC_BATCH_SIZE_LOW_RAM = 1     # total RAM below MAC_BATCH_MIN_RAM_GB
 MAC_BATCH_SIZE_HIGH_RAM = 2
+MAC_BATCH_MIN_RAM_GB = 16      # not measured on a 16 GB Mac yet
 
 # Upstream Hugging Face ids the user may type on a Mac -> the MLX repo that replaces them.
 MAC_MODEL_ALIASES = {

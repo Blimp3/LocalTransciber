@@ -21,7 +21,7 @@ You drag files in, you get a `.md` (Markdown) file next to each recording. It ca
 | | Apple Silicon Mac | Windows PC with NVIDIA GPU | Any PC, no GPU |
 |---|---|---|---|
 | System | macOS 14 (Sonoma) or newer, M1 or newer. **Intel Macs are not supported.** | Windows 10/11, current NVIDIA driver | Windows 10/11 |
-| Free disk space | about 5 GB | about 12 GB (10 GB with one model) | about 4 GB |
+| Free disk space | about 4 GB | about 12 GB (10 GB with one model) | about 4 GB |
 | Internet | only for setup | only for setup | only for setup |
 
 Two speech models are available. The [hardware check](#hardware-check) picks one for your machine and remembers it;
@@ -29,8 +29,8 @@ you can accept or change it, and force either later with `--model`.
 
 | Model | Download | Memory it needs | Accuracy (Italian) | Speed |
 |---|---|---|---|---|
-| **best**: Qwen3-ASR-1.7B | 4.7 GB (NVIDIA) / 2.5 GB (Mac, 8-bit) | NVIDIA: **5.2 GB** video memory (measured, 4.0 GB at the slowest setting); Mac: about 3.5 GB *(estimate)* | word error rate **2.4 - 2.7 %** | NVIDIA RTX 6000: **26x** real time (1 hour of audio in 2.3 minutes) |
-| **light**: Qwen3-ASR-0.6B | 1.9 GB (NVIDIA / CPU) / 1.0 GB (Mac, 8-bit) | NVIDIA: **2.8 GB** video memory (measured); CPU: about 6 GB RAM while loading (measured); Mac: about 2 GB *(estimate)* | word error rate **4.4 - 5.8 %** | NVIDIA: 27x; CPU (6-core Xeon): **2.6x** (1 hour in 23 minutes) |
+| **best**: Qwen3-ASR-1.7B | 4.7 GB (NVIDIA) / 1.6 GB (Mac, 4-bit) | NVIDIA: **5.2 GB** video memory (measured, 4.0 GB at the slowest setting); Mac: **2.5 GB** (measured) | word error rate **2.4 - 2.7 %** (Mac, 4-bit: 2.8 %) | NVIDIA RTX 6000: **26x** real time (1 hour of audio in 2.3 minutes); M2 Mac: **9.5x** |
+| **light**: Qwen3-ASR-0.6B | 1.9 GB (NVIDIA / CPU) / 1.0 GB (Mac, 8-bit) | NVIDIA: **2.8 GB** video memory (measured); CPU: about 6 GB RAM while loading (measured); Mac: **1.8 GB** (measured) | word error rate **4.4 - 5.8 %** (Mac: 5.6 %) | NVIDIA: 27x; CPU (6-core Xeon): **2.6x** (1 hour in 23 minutes); M2 Mac: **17x** |
 
 Which one is chosen (by the hardware check, and by `--model auto`, which follows the same rules):
 
@@ -39,12 +39,11 @@ Which one is chosen (by the hardware check, and by `--model auto`, which follows
   570.26 (Linux, the minimum for CUDA 12.8), the processor is used instead (*light*) and the check says why. (Until
   the hardware check existed the limit for *best* was 12 GB; measured, it needs 4.0 GB at the slowest setting and
   5.2 GB at batch 8.)
-- **Mac:** *best* if the Mac has 16 GB of memory or more, otherwise *light*. **These Mac defaults are provisional**
-  until the self-test below has been run on real hardware.
+- **Mac:** *best* (1.7B, 4-bit) if the Mac has 8 GB of memory or more, otherwise *light* (0.6B, 8-bit). Measured on
+  an M2 MacBook Air with 8 GB: *best* halves the mistakes of *light* and still runs at 9.5x real time.
 - **CPU only:** always *light*.
 
-Numbers marked *(estimate)* are calculated from the model file sizes plus the per-recording overhead measured on the
-NVIDIA card; they have not been measured on a Mac. "Speed 26x" means one minute of audio takes about 2.3 seconds.
+Mac numbers come from 30 FLEURS clips (7 minutes) on an M2 MacBook Air with 8 GB. "Speed 26x" means one minute of audio takes about 2.3 seconds.
 
 ---
 
@@ -74,7 +73,7 @@ Either way you need access to the private GitHub repository (**LocalTransciber**
    It checks that your Mac is supported, installs the small helper tool **uv** if it is missing (from the official
    installer at astral.sh; it says so before doing it), runs the [hardware check](#hardware-check) (press Enter to
    accept the recommended model), creates a private Python environment in the `.venv` folder, installs the packages
-   (about 1 GB) and downloads the model for your Mac (1 - 2.5 GB). Allow 10 - 20 minutes.
+   (about 1 GB) and downloads the model for your Mac (1 - 1.6 GB). Allow 10 - 20 minutes.
    `bash setup_mac.sh light` (or `best`) skips the question, `bash setup_mac.sh both` downloads both models.
 
 4. To transcribe: **double-click `Trascrivi.command`** in Finder. The first time, macOS may say it cannot check the
@@ -138,13 +137,12 @@ runs before any package is installed.
 | NVIDIA card with about 3 - 6 GB | **light** on the GPU | |
 | NVIDIA card below 3 GB, older than GTX 16 / RTX 20 series (compute capability below 7.5), or driver older than 570.65 (Windows) / 570.26 (Linux) | **light** on the processor | the check says which reason applies; updating the driver enables the GPU |
 | No NVIDIA card or driver | **light** on the processor | warns below 8 GB of memory; about 2.6x real time on a 6-core Xeon (1 hour of audio in about 23 minutes), yours may differ |
-| Apple Silicon Mac, 16 GB or more | **best** | provisional, see the self-test below |
-| Apple Silicon Mac, less memory | **light** | 8 GB: "close memory-heavy apps"; MacBook Air: "keep it plugged in for long files" |
+| Apple Silicon Mac (8 GB or more) | **best** | measured on an M2 Air with 8 GB: about 2.5 GB peak, 9.5x real time; batch size 2 from 16 GB; 8 GB: "close memory-heavy apps"; MacBook Air: "keep it plugged in for long files" |
 | Intel Mac, macOS older than 14, or Python under Rosetta | nothing | the setup stops and explains what to do |
 | Not enough free disk space | nothing | the setup stops; it says which choice would fit |
 
 Disk space needed = program + models + 1 GB spare: NVIDIA program about 5 GB, CPU-only about 1.2 GB, Mac about 1 GB;
-models 4.7 GB (best) / 1.9 GB (light) on PC, 2.5 GB / 1.0 GB on the Mac, plus the 0.4 GB speaker model. A program
+models 4.7 GB (best) / 1.9 GB (light) on PC, 1.6 GB / 1.0 GB on the Mac, plus the 0.4 GB speaker model. A program
 folder and models that are already there are counted as zero, so running the setup again is never blocked by that.
 
 Options (the same words work for `setup_windows.bat` and `setup_mac.sh`):
@@ -199,10 +197,9 @@ transcribe.bat interview.m4a --context "Mario Rossi, Politecnico di Milano, LoRa
 ### MacBook Air M2 notes
 
 - **Which model you get.** The [hardware check](#hardware-check) reads your memory (you can also see it under
-  **Apple menu > About This Mac**). With **16 GB or 24 GB** it recommends the *best* model (Qwen3-ASR-1.7B, 8-bit).
-  With **8 GB** it recommends the *light* model (Qwen3-ASR-0.6B, 8-bit). (Provisional; the self-test decides the
-  final rule.) You can try the best model on an 8 GB Air with `bash setup_mac.sh best` or
-  `./transcribe.sh file.m4a --model best`.
+  **Apple menu > About This Mac**). With **8 GB or more** (8, 16, 24 GB) it recommends the *best* model (Qwen3-ASR-1.7B, 4-bit);
+  the *light* model (Qwen3-ASR-0.6B, 8-bit) is faster (17x real time) and can be chosen with `bash setup_mac.sh light`
+  or `./transcribe.sh file.m4a --model light`.
 - **Keep it plugged in** for long recordings. The Air has no fan, so it slows down when it gets hot; on battery
   it slows down further.
 - **On 8 GB, close memory-hungry programs** (browsers with many tabs, video calls, Photos, Xcode) before transcribing.
@@ -222,13 +219,14 @@ punctuation; lower is better.
 | best (1.7B), NVIDIA | **2.57 %** | 2.74 % | **2.44 %** | 25 - 26x | 5.2 GB (batch 8) |
 | light (0.6B), NVIDIA | 4.38 % | 5.82 % | 5.18 % | 27x | 2.8 GB (batch 8) |
 | light (0.6B), CPU float32 | - | 4.68 % (first 10 clips of set B; same as GPU) | - | 2.6x | about 6 GB RAM |
-| best 8-bit, Apple MLX | *not measured yet* | | | | |
-| light 8-bit, Apple MLX | *not measured yet* | | | | |
+| best 4-bit (1.7B), Apple MLX | - | 2.81 % (30 clips) | - | 9.5x | 2.5 GB |
+| best 8-bit (1.7B), Apple MLX | - | 2.14 % (30 clips) | - | 3.5x | 3.3 GB |
+| light 8-bit (0.6B), Apple MLX | - | 5.62 % (30 clips) | - | 17x | 1.8 GB |
 
 Set A is the 100-clip set used to evaluate the previous version of this tool; set B is what
 `benchmark/download_fleurs.py` downloads (the first 100 recordings of the test archive, the set the Mac
-self-test uses). The Mac rows will be filled in from the self-test report. The 8-bit models are expected to be very
-close to the numbers above but that is exactly what the self-test measures.
+self-test uses). The Mac rows are the first 30 clips of set B (7.0 minutes) on an M2 MacBook Air with 8 GB, greedy
+decoding, batch 1, from `mac_selftest.sh --n 30`; they are not comparable to the 100-clip NVIDIA rows.
 
 Peak video memory by batch size (best 1.7B / light 0.6B): 1: 4.0 / 1.7 GB, 2: 4.1 / 1.8, 4: 4.5 / 2.1, 8: 5.2 / 2.8,
 16: 6.5 / 4.1. Speed (best): 4.7x / 7.4x / 12.9x / 22x / 32x for the same batch sizes.
@@ -267,7 +265,7 @@ copyright The Alibaba Qwen team), with two documented changes.
 file -> PyAV decoder (16 kHz mono) -> cut at quiet moments into ~20 s pieces -> speech model -> text
                                         (same code on every platform)      NVIDIA: PyTorch + qwen-asr, float16
                                                                             CPU:    PyTorch + qwen-asr, float32
-                                                                            Mac:    MLX (mlx-audio), 8-bit, Apple GPU
+                                                                            Mac:    MLX (mlx-audio), 4-bit / 8-bit, Apple GPU
 --speakers N: Silero VAD -> WavLM voice fingerprints -> clustering -> per-speaker turns -> the same speech model
 ```
 
@@ -296,7 +294,7 @@ python -m unittest discover -s tests -v                           # unit tests, 
 
 ### For the maintainer: the Mac self-test
 
-The Apple/MLX path could not be run without a Mac. After `bash setup_mac.sh` on the MacBook Air run:
+First run: M2 MacBook Air, 8 GB, `--n 30` (the Mac rows above). After `bash setup_mac.sh` on a Mac run:
 
 ```
 bash mac_selftest.sh          # about an hour; add --n 30 for a quicker run
@@ -335,7 +333,7 @@ name are removed). Send that file back. Then adjust `MAC_BEST_MIN_RAM_GB`, `MAC_
 testo, **direttamente sul tuo computer**: dopo l'installazione non serve internet e nessun file esce dal computer.
 
 **Requisiti.** Mac con chip Apple (M1 o successivi) e macOS 14 o più recente (i Mac Intel non sono supportati),
-oppure PC Windows (meglio con scheda video NVIDIA). Circa 5 GB di spazio libero su Mac.
+oppure PC Windows (meglio con scheda video NVIDIA). Circa 4 GB di spazio libero su Mac.
 
 **Installazione su Mac (una volta sola)**
 
@@ -344,9 +342,9 @@ oppure PC Windows (meglio con scheda video NVIDIA). Circa 5 GB di spazio libero 
    gli "strumenti da riga di comando": conferma con **Installa**.)
 2. Apri **Terminale** (Cmd+Spazio, scrivi *Terminale*). Scrivi `cd ` (con lo spazio), trascina dentro la cartella del
    progetto e premi Invio.
-3. Scrivi `bash setup_mac.sh` e premi Invio. Ci vogliono 10-20 minuti: scarica programmi e modello (1-2,5 GB).
-4. Per sapere quanta memoria ha il tuo Mac: menu Apple  > **Informazioni su questo Mac**. Con 16 GB o più viene usato
-   il modello più accurato, con 8 GB quello più leggero (impostazione provvisoria).
+3. Scrivi `bash setup_mac.sh` e premi Invio. Ci vogliono 10-20 minuti: scarica programmi e modello (1-1,6 GB).
+4. Per sapere quanta memoria ha il tuo Mac: menu Apple  > **Informazioni su questo Mac**. Con 8 GB o più viene usato
+   il modello più accurato (misurato su un MacBook Air M2 da 8 GB).
 
 **Uso su Mac.** Doppio clic su **`Trascrivi.command`**. La prima volta, se macOS non lo apre: clic destro sul file,
 **Apri**, poi ancora **Apri**. Scegli uno o più file audio o video; puoi anche far separare due persone che parlano

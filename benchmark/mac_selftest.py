@@ -278,7 +278,7 @@ def step_presets(rep, args, models, tmp):
 
 
 def step_batch(rep, args, models, tmp):
-    repo = next((m for m in models if m.endswith("1.7B-8bit")), models[-1])
+    repo = config.MAC_MODELS["best"] if config.MAC_MODELS["best"] in models else models[-1]
     n = min(30, args.n)
     rep.section(f"Batch size comparison: {repo.split('/')[-1]}, first {n} clips")
     outputs = {}
@@ -382,8 +382,8 @@ def main(argv=None):
     rep.add(f"Date (UTC): {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}")
     rep.add(f"Repository version: {localtranscribe.__version__}")
     rep.add("Auto-selection rule in this version: best model if total RAM >= "
-            f"{config.MAC_BEST_MIN_RAM_GB} GB, else light; Mac batch size {config.MAC_BATCH_SIZE_LOW_RAM} below / "
-            f"{config.MAC_BATCH_SIZE_HIGH_RAM} at or above that.")
+            f"{config.MAC_BEST_MIN_RAM_GB} GB, else light; Mac batch size {config.MAC_BATCH_SIZE_LOW_RAM} below "
+            f"{config.MAC_BATCH_MIN_RAM_GB} GB / {config.MAC_BATCH_SIZE_HIGH_RAM} at or above that.")
     rep.add(f"Presets under test: {', '.join(m.split('/')[-1] for m in args.models)}")
     machine_info(rep)
 

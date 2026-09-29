@@ -3,7 +3,7 @@
 #
 # Usage:   bash setup_mac.sh [auto|best|light|both] [--yes]
 #   auto   (default) checks this Mac, recommends a model and asks you to accept it or choose another
-#   best   Qwen3-ASR-1.7B, 8-bit (2.5 GB download)      light  Qwen3-ASR-0.6B, 8-bit (1.0 GB download)
+#   best   Qwen3-ASR-1.7B, 4-bit (1.6 GB download)      light  Qwen3-ASR-0.6B, 8-bit (1.0 GB download)
 #   both   downloads both       --yes  accept the recommendation without asking
 # An explicit best/light/both skips the question, but the hardware check is still shown and warns if it will not fit.
 # The choice is saved in localtranscribe_settings.json; check_hardware.sh repeats the check at any time.

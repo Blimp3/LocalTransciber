@@ -145,7 +145,7 @@ class DeviceChoiceTests(unittest.TestCase):
         with mock.patch.object(devices, "is_apple_silicon", return_value=True):
             self.assertEqual(devices.choose_model("auto", "mps", 16.0), config.MAC_MODELS["best"])
             self.assertEqual(devices.choose_model("auto", "mps", 24.0), config.MAC_MODELS["best"])
-            self.assertEqual(devices.choose_model("auto", "mps", 8.0), config.MAC_MODELS["light"])
+            self.assertEqual(devices.choose_model("auto", "mps", 8.0), config.MAC_MODELS["best"])
             self.assertEqual(devices.choose_model("best", "mps", 8.0), config.MAC_MODELS["best"])
             self.assertEqual(devices.choose_model("Qwen/Qwen3-ASR-0.6B", "mps", 8.0), config.MAC_MODELS["light"])
             self.assertEqual(devices.choose_model("mlx-community/Qwen3-ASR-1.7B-4bit", "mps", 8.0),

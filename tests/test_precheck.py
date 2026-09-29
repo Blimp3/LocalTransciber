@@ -99,12 +99,13 @@ class RuleTests(unittest.TestCase):
             self.assertEqual(precheck.nvidia_preset_for(vram), want, vram)
         self.assertIsNone(precheck.nvidia_preset_for(None))
 
-    def test_mac_presets_use_the_provisional_rule(self):
-        self.assertEqual(config.MAC_BEST_MIN_RAM_GB, 16)  # the Mac values are untouched until the real-Mac self-test
-        for ram, want in ((8, "light"), (16, "best"), (15.9, "best"), (24, "best"), (None, "light")):
+    def test_mac_presets_use_the_measured_rule(self):
+        self.assertEqual((config.MAC_BEST_MIN_RAM_GB, config.MAC_BATCH_MIN_RAM_GB), (8, 16))  # from the M2 8 GB self-test
+        for ram, want in ((8, "best"), (7.6, "best"), (16, "best"), (None, "light")):
             self.assertEqual(precheck.mac_preset_for(ram), want, ram)
         self.assertEqual((config.MAC_BATCH_SIZE_LOW_RAM, config.MAC_BATCH_SIZE_HIGH_RAM), (1, 2))
         self.assertEqual(precheck.mac_batch_size(8), 1)
+        self.assertEqual(precheck.mac_batch_size(16), 2)
         self.assertEqual(precheck.mac_batch_size(24), 2)
 
     def test_batch_size_from_free_memory(self):
@@ -158,7 +159,7 @@ class RuleTests(unittest.TestCase):
 
 class MacTests(Sandbox):
     def test_m2_air_by_memory(self):
-        for ram, preset, batch in ((8, "light", 1), (16, "best", 2), (24, "best", 2)):
+        for ram, preset, batch in ((8, "best", 1), (16, "best", 2), (24, "best", 2)):
             code, settings, out = self.run_check(mac(ram=ram))
             self.assertEqual(code, 0, out)
             self.assertEqual((settings["preset"], settings["device"], settings["batch_size"]), (preset, "mps", batch), ram)
@@ -187,10 +188,14 @@ class MacTests(Sandbox):
     def test_summary_line_names_the_machine(self):
         _, _, out = self.run_check(mac(ram=16))
         self.assertIn("Computer : MacBook Air (Apple M2, 8-core GPU), 16 GB memory, macOS 15.6", out)
-        self.assertIn("Disk     : 200 GB free (needs about 5 GB", out)
+        self.assertIn("Disk     : 200 GB free (needs about 4 GB", out)
 
-    def test_best_on_8_gb_is_offered_but_tight(self):
+    def test_best_on_8_gb_is_recommended(self):
         rep = precheck.assess(mac(ram=8))
+        self.assertEqual((rep["recommended"], rep["options"]["best"]["fit"]), ("best", "good"))
+
+    def test_best_on_4_gb_is_offered_but_tight(self):
+        rep = precheck.assess(mac(ram=4))
         self.assertEqual(rep["recommended"], "light")
         self.assertEqual(rep["options"]["best"]["fit"], "tight")
         self.assertTrue(rep["options"]["best"]["offered"])
@@ -399,7 +404,7 @@ class DiskTests(Sandbox):
 
     def test_disk_need_matches_the_measured_sizes(self):
         expected = {("nvidia", "best"): 5.0 + 4.7 + 0.4 + 1.0, ("nvidia", "light"): 5.0 + 1.9 + 0.4 + 1.0,
-                    ("cpu", "light"): 1.2 + 1.9 + 0.4 + 1.0, ("mac", "best"): 1.0 + 2.5 + 0.4 + 1.0,
+                    ("cpu", "light"): 1.2 + 1.9 + 0.4 + 1.0, ("mac", "best"): 1.0 + 1.6 + 0.4 + 1.0,
                     ("mac", "light"): 1.0 + 1.0 + 0.4 + 1.0}
         for (kind, preset), gb in expected.items():
             profile = {"nvidia": pc(gpus=[gpu(24)]), "cpu": pc(), "mac": mac(ram=24)}[kind]
