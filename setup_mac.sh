@@ -42,7 +42,7 @@ say "This will:"
 say "  1. install 'uv' (a small tool that fetches Python and the packages) if it is missing"
 say "  2. check this Mac (memory, disk space) and recommend the model that fits it"
 say "  3. create a private Python environment in the folder .venv next to this file"
-say "  4. install the packages (about 1.5 GB)"
+say "  4. install the packages (about 1 GB)"
 say "  5. download the speech models once, so that later runs work without internet"
 say "Nothing outside this folder, your home folder and the Hugging Face model cache (~/.cache/huggingface) is touched."
 say

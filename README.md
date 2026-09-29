@@ -73,7 +73,7 @@ Either way you need access to the private GitHub repository (**LocalTransciber**
    It checks that your Mac is supported, installs the small helper tool **uv** if it is missing (from the official
    installer at astral.sh; it says so before doing it), runs the [hardware check](#hardware-check) (press Enter to
    accept the recommended model), creates a private Python environment in the `.venv` folder, installs the packages
-   (about 1 GB) and downloads the model for your Mac (1 - 1.6 GB). Allow 10 - 20 minutes.
+   (about 1 GB) and downloads the models for your Mac (about 2 GB with the speaker model). Allow 10 - 20 minutes.
    `bash setup_mac.sh light` (or `best`) skips the question, `bash setup_mac.sh both` downloads both models.
 
 4. To transcribe: **double-click `Trascrivi.command`** in Finder. The first time, macOS may say it cannot check the
@@ -344,7 +344,7 @@ oppure PC Windows (meglio con scheda video NVIDIA). Circa 4 GB di spazio libero 
    gli "strumenti da riga di comando": conferma con **Installa**.)
 2. Apri **Terminale** (Cmd+Spazio, scrivi *Terminale*). Scrivi `cd ` (con lo spazio), trascina dentro la cartella del
    progetto e premi Invio.
-3. Scrivi `bash setup_mac.sh` e premi Invio. Ci vogliono 10-20 minuti: scarica programmi e modello (1-1,6 GB).
+3. Scrivi `bash setup_mac.sh` e premi Invio. Ci vogliono 10-20 minuti: scarica programmi e modelli (circa 3 GB in tutto).
 4. Per sapere quanta memoria ha il tuo Mac: menu Apple  > **Informazioni su questo Mac**. Con 8 GB o più viene usato
    il modello più accurato (misurato su un MacBook Air M2 da 8 GB).
 
