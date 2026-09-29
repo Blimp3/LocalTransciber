@@ -183,6 +183,65 @@ class MlxQwenBackend(Backend):
             self._recs.extend(sampler.rows(gen))  # only after success: a failed group leaves no records
         return result
 
+    def decode(self, ids):
+        return self.model._tokenizer.decode(ids)
+
+    @property
+    def eos_ids(self):
+        return getattr(self.model, "_model", self.model)._eos_token_ids()
+
+    def word_continuations(self, piece, language, context, requests, max_steps=8):
+        """For ONE audio piece: requests = [(prefix_ids, alt_ids)]. Per request and alt, (ids, ps, stop) = the greedy
+        tokens (and their probabilities) the model writes after prompt + prefix + [alt], up to the next word (a token
+        starting with whitespace), EOS or max_steps; `stop` is that ending token's id. None when max_steps ran out
+        (the word is incomplete).
+        The prompt and the prefixes are fed to one KV cache once; after each alt the cache is trimmed back."""
+        # ponytail: re-encodes the audio and re-prefills the prompt once per piece (--confidence ~1.6x the time on
+        # 100 FLEURS clips; batching the alts saved only ~5%). Reusing the transcription's own cache would remove it.
+        mx, m = self.mx, getattr(self.model, "_model", self.model)
+        feats, mask, n_audio = m._preprocess_audio(float_range_normalize(piece))
+        ids = m._build_prompt(n_audio, language, context or None)
+        embeds = m._build_inputs_embeds(ids, m.get_audio_features(feats, mask))[0]
+        del feats, mask
+        cache, eos = m.make_cache(), m._eos_token_ids()
+
+        def feed(tokens):  # -> logits of the last position
+            return m._forward_with_embeds(m.model.embed_tokens(mx.array([tokens])), cache=cache)[0, -1]
+
+        m._forward_with_embeds(embeds[None], cache=cache)
+        mx.eval([x for c in cache for x in c.state])
+        n_prompt = base = cache[0].offset
+        fed = []  # prefix tokens currently in the cache after the prompt
+        out = [None] * len(requests)
+        for r in sorted(range(len(requests)), key=lambda r: len(requests[r][0])):
+            prefix, alts = list(requests[r][0]), requests[r][1]
+            if prefix[:len(fed)] != fed:  # not a longer prefix of the previous one: start again from the prompt
+                for c in cache:
+                    c.trim(c.offset - n_prompt)
+                fed = []
+            if len(prefix) > len(fed):
+                feed(prefix[len(fed):])
+                fed = prefix
+            base = cache[0].offset
+            row = []
+            for alt in alts:
+                got, stop, logits = [], None, feed([alt])
+                for step in range(max_steps):
+                    lp = logits - mx.logsumexp(logits)
+                    t = int(mx.argmax(lp))
+                    if t in eos or self.decode([t])[:1].isspace():
+                        stop = t
+                        break
+                    got.append((t, float(mx.exp(lp[t]))))
+                    if step < max_steps - 1:
+                        logits = feed([t])
+                row.append(([t for t, _ in got], [q for _, q in got], stop) if stop is not None else None)
+                for c in cache:
+                    c.trim(c.offset - base)
+            out[r] = row
+        mx.clear_cache()
+        return out
+
     def _record(self, rec, text, language):
         """(ids, p, alt ids, alt p) of one piece -> {"aligned", "tokens"} with the token texts."""
         ids, ps, alt_ids, alt_ps = rec

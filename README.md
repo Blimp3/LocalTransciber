@@ -29,7 +29,9 @@ after that everything runs offline on your Apple Silicon Mac, your NVIDIA GPU, o
   why, and remembers the choice.
 - **Speaker separation.** `--speakers 2` turns a two-person call into `[00:01:23] Parlante 1: ...` lines.
 - **Context hints.** `--context "Mario Rossi, LoRaWAN"` helps names and jargon come out spelled right.
-- **Word confidence** (Mac). `--confidence` records each word-piece's probability and the model's alternatives, the
+- **Word confidence** (Mac). `--confidence` records each word-piece's probability and the model's alternatives (and groups them
+  into words, flagging the unsure ones, which also get whole-word candidates from the
+  speech model), the
   basis for the upcoming AI correction (see the [roadmap](ROADMAP.md)).
 - **Review page.** A local page with the editable transcript beside the audio; click a timestamp to jump there.
 - **Double-click launchers** for people who never open a terminal: `Trascrivi.command` and `Rivedi.command` on
@@ -103,7 +105,7 @@ timestamp. With `--speakers`, each turn starts with the timestamp and the speake
 | `--model best`, `light`, or a Hugging Face repo id | choose the model (default: the choice saved by the hardware check) |
 | `--device auto`, `cuda`, `mps`, `cpu` | choose the hardware (default: the saved choice). On a Mac `mps` is the Apple GPU |
 | `--batch-size N` | pieces processed together (default: the saved choice, lowered if memory is tight; lower = less memory) |
-| `--confidence` | also save each word-piece's confidence and the model's alternatives to `<recording>.review.json` (Apple Silicon only for now) |
+| `--confidence` | also save each word-piece's confidence and the model's alternatives, plus per-word `"words"` with an `"unsure"` flag and whole-word `"cands"` for the unsure ones, to `<recording>.review.json` (Apple Silicon only for now) |
 | `--stats` | print the device, model, speed and peak memory at the end |
 | `--chunk 20` | seconds per piece. Leave at 20: longer pieces are measurably less accurate |
 
@@ -233,6 +235,11 @@ low-confidence words, guarded by a rule checker and confirmed by you. Details in
 Issues and pull requests are welcome. Before opening one: run the unit tests, keep to the standard library where
 possible (new dependencies are a discussion, not a default), and if you touch the chunker, the prompts or the model
 presets, include `benchmark/bench.py` numbers before and after.
+
+The upcoming AI correction is guarded by a rule checker written in [Bend](https://github.com/HigherOrderCO/Bend):
+`LAWS.bend` states the rules (the maintainer's specification: propose changes to it in an issue first), `guard.bend`
+is the checker, and `PROOF.bend` proves that the checker obeys every rule. If you touch any of them, run
+`bend PROOF.bend`; it must print `ALL PROOFS CHECK`.
 
 ## Troubleshooting
 

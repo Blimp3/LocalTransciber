@@ -31,6 +31,9 @@ The goal is fewer mistakes without inventing text. Four parts, each one a safety
    written and proved in [Bend](https://github.com/HigherOrderCO/Bend) and compiled to a native binary.
 4. **You have the final say**: the review tool highlights accepted suggestions and nothing is applied until confirmed.
 
+The candidates are the speech model's own whole-word guesses: each unsure word's weakest piece is swapped for its
+alternatives and the model finishes the word (`"cands"` in the sidecar).
+
 ## Under evaluation
 
 - **Whisper as an alternative backend**, A/B-tested against Qwen3-ASR on real phone calls and lecture recordings
@@ -43,6 +46,9 @@ The goal is fewer mistakes without inventing text. Four parts, each one a safety
 
 - Windows: the rule checker as a prebuilt binary, and confidence recording on the PyTorch path.
 - Confidence recording together with `--speakers`.
+- Idea: word-level timestamps from the Qwen3 forced aligner (mlx-audio already includes it), so the review page can
+  jump to, or play, exactly one word. It needs a second model download and more memory on 8 GB Macs. Not for
+  generating candidates: a short clip loses the sentence the speech model needs to choose the right word.
 
 ## Not planned
 

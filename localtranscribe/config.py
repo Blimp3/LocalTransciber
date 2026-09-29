@@ -16,6 +16,12 @@ MAX_NEW_TOKENS = 1024
 
 # --confidence: alternatives saved per decoded word-piece (the chosen one is not counted twice).
 CONFIDENCE_TOP_K = 5
+# --confidence: a word whose probability (product of its pieces') is below this is marked "unsure".
+# 0.9 flags 9.4% of the words and catches 70% of the wrong ones (FLEURS Italian, 100 clips, best preset).
+CONFIDENCE_UNSURE = 0.9
+# --confidence: an alternative piece below this probability is not tried for candidates. All 20 hits (reference word
+# among the candidates) came from alts with p >= 0.027; 0.02 drops 433 of the 734 alts tried (FLEURS Italian, 100 clips).
+CONFIDENCE_ALT_MIN = 0.02
 
 # --------------------------------------------------------------------------------------
 # NVIDIA GPU (Windows/Linux) and CPU fallback: PyTorch + the official qwen-asr package

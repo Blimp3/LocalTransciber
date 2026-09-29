@@ -135,7 +135,7 @@ class ConfidenceTests(unittest.TestCase):
             last_records = []
 
             def transcribe(self, pieces, language, context=""):
-                self.last_records = [{"aligned": True, "tokens": [len(p)]} for p in pieces]
+                self.last_records = [{"aligned": False, "tokens": [len(p)]} for p in pieces]
                 return ["uno", "", "tre"][:len(pieces)]
 
         paragraphs = []
@@ -159,6 +159,143 @@ class ConfidenceTests(unittest.TestCase):
         with mock.patch.object(pipeline, "strip_context_echo", lambda t, c: "ciao"):
             pipeline.transcribe_pieces(Stub(), [np.zeros(1)], "Italian", "Mario Rossi", records=records)
         self.assertFalse(records[0]["aligned"])
+
+
+def tk(text, p=1.0):
+    return {"text": text, "p": p, "alts": []}
+
+
+class GroupWordsTests(unittest.TestCase):
+    def test_groups_on_leading_space_with_product_p_and_spans(self):
+        from localtranscribe.textutil import group_words
+
+        toks = [tk(" accom", 0.5), tk("un", 0.5), tk("ano", 1.0), tk(" dino", 0.9), tk(".", 0.5)]
+        self.assertEqual(group_words(toks, "accomunano dino."),
+                         [{"w": "accomunano", "p": 0.25, "i": [0, 2]}, {"w": "dino.", "p": 0.45, "i": [3, 4]}])
+
+    def test_skips_language_prefix_and_special_tokens(self):
+        from localtranscribe.textutil import group_words
+
+        toks = [tk("language"), tk(" Italian"), tk("<asr_text>"), tk("ciao"), tk(" mondo"), tk("<|im_end|>")]
+        self.assertEqual([w["i"] for w in group_words(toks, "ciao mondo")], [[3, 3], [4, 4]])
+
+    def test_mismatch_gives_none(self):
+        from localtranscribe.textutil import group_words
+
+        self.assertIsNone(group_words([tk("ciao"), tk(" mondo")], "ciao mondi"))
+
+
+class WordsInSidecarTests(unittest.TestCase):
+    def run_wav(self, aligned):
+        from localtranscribe import pipeline
+
+        class Stub:
+            batch_size = 1
+
+            def transcribe(self, pieces, language, context=""):
+                self.last_records = [{"aligned": aligned, "tokens": [tk("ciao", 0.99), tk(" mondo", 0.3)]}]
+                return ["ciao mondo"]
+
+        paragraphs = []
+        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.zeros(1), 0.0)]):
+            pipeline.transcribe_wav(Stub(), None, "Italian", paragraphs=paragraphs)
+        return paragraphs[0]["words"]
+
+    def test_unsure_word_is_flagged(self):
+        words = self.run_wav(True)
+        self.assertNotIn("unsure", words[0])
+        self.assertTrue(words[1]["unsure"])
+
+    def test_unaligned_record_gives_none(self):
+        self.assertIsNone(self.run_wav(False))
+
+
+class CandidatesTests(unittest.TestCase):
+    """Words "accomunano" (pieces 0-2, weakest 1, unsure), "dino" (piece 3, unsure), "ok" (sure)."""
+
+    ALTS_MID = [[30, "mi", 0.3], [31, " split", 0.2], [32, "<|im_end|>", 0.1], [33, "ni", 0.1], [34, "mu", 0.05],
+                [35, "zz", 0.04], [36, "qq", 0.03], [37, "mi", 0.02], [38, "mo", 0.019]]
+    ALTS_LAST = [[40, " dino", 0.3], [41, " ", 0.25], [42, "dine", 0.2], [43, " dine", 0.1]]
+    # (ids, ps, stop token): the next word of the sentence is " dino" (13) after word 0 and " ok" (14) after word 1
+    CONTS = {30: ([20], [0.5], 13), 33: ([21], [0.5], 13), 34: ([], [], 13), 35: None, 36: ([22], [1.0], 13),
+             37: ([20], [0.9], 13), 40: ([], [], 14), 41: ([], [], 14), 43: ([], [], 14),
+             50: ([], [], 7), 51: ([], [], 14), 52: ([], [], 7)}
+
+    def run_wav(self, has_method=True, sure=False, last=False):
+        from localtranscribe import pipeline
+
+        p = 0.99 if sure else 0.4
+        toks = [{"id": 10, "text": " acco", "p": 0.99, "alts": []},
+                {"id": 11, "text": "mu", "p": p, "alts": self.ALTS_MID},
+                {"id": 12, "text": "nano", "p": 0.99, "alts": []},
+                {"id": 13, "text": " dino", "p": 0.99 if sure else 0.5, "alts": self.ALTS_LAST},
+                {"id": 14, "text": " ok", "p": 0.3 if last else 0.99,
+                 "alts": [[50, " ak", 0.3], [51, " ek", 0.2], [52, " ik", 0.1]] if last else []}]
+        conts, calls = self.CONTS, []
+
+        class Stub:
+            batch_size = 1
+            eos_ids = {7}
+
+            def transcribe(self, pieces, language, context=""):
+                self.last_records = [{"aligned": True, "tokens": toks} for _ in pieces]
+                return ["accomunano dino ok"]
+
+            def decode(self, ids):
+                return {20: "mi", 21: "ni", 22: " x"}[ids[0]]
+
+        if has_method:
+            def wc(self, piece, language, context, requests):
+                calls.append(requests)
+                return [[conts[a] for a in alts] for _, alts in requests]
+
+            Stub.word_continuations = wc
+        paragraphs = []
+        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.zeros(1), 0.0)]):
+            pipeline.transcribe_wav(Stub(), None, "Italian", paragraphs=paragraphs)
+        return paragraphs[0]["words"], calls
+
+    def test_alts_sent_to_the_backend_are_filtered(self):
+        _, calls = self.run_wav()
+        self.assertEqual(len(calls), 1)  # one call per piece
+        # the whitespace alt would split the word, the special token is skipped; for the later word
+        # (first piece) the alt without whitespace would glue onto the previous word
+        self.assertEqual(calls[0], [([10], [30, 33, 34, 35, 36, 37]), ([10, 11, 12], [40, 41, 43])])
+
+    def test_alt_below_the_floor_is_not_tried(self):
+        _, calls = self.run_wav()
+        self.assertIn(37, calls[0][0][1])  # exactly at CONFIDENCE_ALT_MIN: kept
+        self.assertNotIn(38, calls[0][0][1])  # just below: dropped (CONTS has no entry for it)
+
+    def test_candidates_composed_deduped_sorted(self):
+        words, _ = self.run_wav()
+        # accomimi: p .3*.5, duplicate (.02*.9) dropped; acconini .1*.5; accomu = alt p only;
+        # incomplete (None) and whitespace ("qq x") dropped
+        self.assertEqual(words[0]["cands"], [{"w": "accomimi", "p": 0.15}, {"w": "acconini", "p": 0.05},
+                                             {"w": "accomu", "p": 0.05}])
+        # " dino" is unchanged and " " is empty: both dropped
+        self.assertEqual(words[1]["cands"], [{"w": "dine", "p": 0.1}])
+        self.assertNotIn("cands", words[2])
+
+    def test_stop_token_must_be_the_original_next_token(self):
+        self.CONTS = {**self.CONTS, 33: ([21], [0.5], 99)}  # after "acconini" the model wants another word
+        words, _ = self.run_wav()
+        self.assertEqual([c["w"] for c in words[0]["cands"]], ["accomimi", "accomu"])
+
+    def test_last_word_candidate_must_end_the_text(self):
+        words, _ = self.run_wav(last=True)
+        # " ak" and " ik" end with EOS: kept; " ek" wants to go on with " ok": dropped
+        self.assertEqual([c["w"] for c in words[2]["cands"]], ["ak", "ik"])
+
+    def test_no_unsure_words_no_call(self):
+        words, calls = self.run_wav(sure=True)
+        self.assertEqual(calls, [])
+        self.assertTrue(all("cands" not in w for w in words))
+
+    def test_backend_without_word_continuations_adds_nothing(self):
+        words, _ = self.run_wav(has_method=False)
+        self.assertTrue(words[0]["unsure"])
+        self.assertTrue(all("cands" not in w for w in words))
 
 
 if __name__ == "__main__":

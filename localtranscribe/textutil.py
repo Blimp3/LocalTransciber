@@ -202,3 +202,26 @@ def fmt_time(s):
     """Seconds -> hh:mm:ss."""
     s = int(s)
     return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
+
+
+def group_words(tokens, text):
+    """Word-pieces ({"text", "p", ...}) -> [{"w", "p", "i": [first, last]}], one per word of `text.split()`.
+    A piece starting with whitespace starts a word; p is the product of its pieces' p; i indexes `tokens`.
+    Skips the "language X<asr_text>" prefix and special tokens. None if the words differ from `text.split()`."""
+    words, start = [], 0
+    for n, t in enumerate(tokens):
+        if "<asr_text>" in t["text"]:
+            words, start = [], n + 1
+    for n in range(start, len(tokens)):
+        s = tokens[n]["text"]
+        if s.startswith("<|") and s.endswith("|>"):
+            continue
+        if not words or s[:1].isspace():
+            words.append({"w": "", "p": 1.0, "i": [n, n]})
+        w = words[-1]
+        w["w"] += s
+        w["p"] *= tokens[n]["p"]
+        w["i"][1] = n
+    for w in words:
+        w["w"], w["p"] = w["w"].strip(), round(w["p"], 5)
+    return words if [w["w"] for w in words] == text.split() else None
