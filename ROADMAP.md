@@ -10,19 +10,14 @@ review and correction on top without changing how it is used.
 - Hardware check that recommends a model, explains why, and remembers the choice; double-click launchers for Mac
   (`Trascrivi.command`) and Windows (`transcribe.bat`).
 - Two-speaker separation (`--speakers 2`) with `[hh:mm:ss]` timestamps per turn.
-- Transcripts written as Markdown (`<recording>.md`).
+- Transcripts written as Markdown (`<recording>.md`), every paragraph starting with its `[hh:mm:ss]` timestamp (the
+  benchmark scripts strip the timestamps before scoring).
 - Measured presets: NVIDIA (RTX 6000, float16), CPU, and Apple Silicon (100 FLEURS clips per preset, batch sizes,
   speaker separation), plus a fresh-clone install test on a Mac.
 - `--confidence` (Mac): each word-piece's probability and the model's top alternatives are saved to
   `<recording>.review.json`, one entry per paragraph, without changing the transcript.
 
-## Next: a timestamp on every paragraph
-
-- Prefix each paragraph with `[hh:mm:ss]`, the same format `--speakers` already uses, so a reader or the review tool
-  can jump to it. The chunker already knows each piece's offset.
-- The benchmark scripts that read `.md` files strip the timestamps before scoring.
-
-## Then: a review tool
+## Next: a review tool
 
 - A local page served by Python's built-in `http.server` on `127.0.0.1` and opened in the default browser. No new
   dependencies.

@@ -90,8 +90,8 @@ transcribe.bat  call.m4a --speakers 2                                           
 ```
 
 The transcript `<recording>.md` is written next to the recording (or into `--out-dir`). Long recordings are cut at
-quiet moments into pieces of about 20 seconds; each piece becomes a paragraph. With `--speakers`, each turn starts with
-a `[hh:mm:ss]` timestamp and the speaker's label.
+quiet moments into pieces of about 20 seconds; each piece becomes a paragraph that starts with its `[hh:mm:ss]`
+timestamp. With `--speakers`, each turn starts with the timestamp and the speaker's label.
 
 | Option | What it does |
 |---|---|
@@ -216,9 +216,9 @@ requirements-windows.txt` (NVIDIA) or `-r requirements-cpu.txt`, then `PYTHONPAT
 
 ## Roadmap
 
-Next: a `[hh:mm:ss]` timestamp on every paragraph; then a local review page (editable transcript beside the audio,
-click a timestamp to jump there); then local AI correction that only chooses among the ASR model's own alternatives
-at low-confidence words, guarded by a rule checker and confirmed by you. Details in [ROADMAP.md](ROADMAP.md).
+Next: a local review page (editable transcript beside the audio, click a timestamp to jump there); then local AI
+correction that only chooses among the ASR model's own alternatives at low-confidence words, guarded by a rule
+checker and confirmed by you. Details in [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 

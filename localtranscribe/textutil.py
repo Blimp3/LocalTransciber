@@ -196,3 +196,9 @@ def strip_context_echo(text, context):
         if pos != -1:
             return text[:pos].strip()
     return text.strip()
+
+
+def fmt_time(s):
+    """Seconds -> hh:mm:ss."""
+    s = int(s)
+    return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"

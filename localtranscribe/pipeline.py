@@ -1,17 +1,17 @@
 """Cut audio into pieces, run a backend on them, clean and join the text. Backend-independent."""
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
 from . import config
-from .textutil import split_audio_into_chunks, strip_context_echo
+from .textutil import fmt_time, split_audio_into_chunks, strip_context_echo
 
 SR = config.SAMPLE_RATE
 
 
-def split_wav(wav: np.ndarray, chunk_seconds: float = config.CHUNK_SECONDS) -> List[np.ndarray]:
-    """Cut at quiet moments into pieces of about `chunk_seconds` (never more than ~+5 s)."""
-    return [p for p, _ in split_audio_into_chunks(wav, SR, max_chunk_sec=chunk_seconds)]
+def split_wav(wav: np.ndarray, chunk_seconds: float = config.CHUNK_SECONDS) -> List[Tuple[np.ndarray, float]]:
+    """Cut at quiet moments into (piece, start offset in seconds) of about `chunk_seconds` (never more than ~+5 s)."""
+    return split_audio_into_chunks(wav, SR, max_chunk_sec=chunk_seconds)
 
 
 def transcribe_pieces(
@@ -41,10 +41,12 @@ def transcribe_pieces(
 
 def transcribe_wav(backend, wav, language, context="", chunk_seconds=config.CHUNK_SECONDS, progress=None,
                    paragraphs=None) -> str:
-    """Whole recording -> plain text, one paragraph per ~20 s piece. With `paragraphs` (a list), one
-    {"text", "aligned", "tokens"} per paragraph is appended to it (needs a backend with record_confidence)."""
+    """Whole recording -> text, one "[hh:mm:ss] ..." paragraph per ~20 s piece. With `paragraphs` (a list), one
+    {"text", "offset", "aligned", "tokens"} per paragraph is appended to it (needs a backend with record_confidence)."""
     records = [] if paragraphs is not None else None
-    texts = transcribe_pieces(backend, split_wav(wav, chunk_seconds), language, context, progress, records)
+    chunks = split_wav(wav, chunk_seconds)
+    texts = transcribe_pieces(backend, [p for p, _ in chunks], language, context, progress, records)
+    offsets = [o for _, o in chunks]
     if paragraphs is not None:
-        paragraphs.extend(dict(r, text=t) for t, r in zip(texts, records) if t)
-    return "\n\n".join(t for t in texts if t)
+        paragraphs.extend(dict(r, text=t, offset=o) for t, o, r in zip(texts, offsets, records) if t)
+    return "\n\n".join(f"[{fmt_time(o)}] {t}" for t, o in zip(texts, offsets) if t)

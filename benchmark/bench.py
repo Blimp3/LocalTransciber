@@ -39,7 +39,7 @@ def run(args):
     language = None if args.language.lower() == "auto" else args.language
     pieces, owner = [], []
     for k, w in enumerate(wavs):
-        for p in split_wav(w, args.chunk):
+        for p, _ in split_wav(w, args.chunk):
             pieces.append(p)
             owner.append(k)
 

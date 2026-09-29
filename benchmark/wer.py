@@ -11,8 +11,10 @@ if REPO_ROOT not in sys.path:
 
 
 def normalize(text):
-    """Lowercase, drop punctuation (apostrophes become spaces: l'uomo -> l uomo), collapse spaces."""
-    text = unicodedata.normalize("NFKC", str(text)).lower().replace("’", "'")
+    """Drop [hh:mm:ss] timestamps, lowercase, drop punctuation (apostrophes become spaces: l'uomo -> l uomo),
+    collapse spaces."""
+    text = re.sub(r"\[\d{2}:\d{2}:\d{2}\]", " ", str(text))
+    text = unicodedata.normalize("NFKC", text).lower().replace("’", "'")
     text = re.sub(r"[^\w\s]", " ", text).replace("_", " ")
     return " ".join(text.split())
 

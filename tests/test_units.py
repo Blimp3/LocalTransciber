@@ -112,13 +112,14 @@ class TextTests(unittest.TestCase):
 class PipelineTests(unittest.TestCase):
     def test_transcribe_wav_joins_pieces_and_strips_echo(self):
         wav = noisy_speechlike(60)
-        n_pieces = len(pipeline.split_wav(wav, 20))
+        chunks = pipeline.split_wav(wav, 20)
         fake = FakeBackend(texts=["uno", "due Mario Rossi Politecnico di Milano", ""] + ["x"] * 20)
         text = pipeline.transcribe_wav(fake, wav, "Italian", "Mario Rossi Politecnico di Milano", 20)
-        self.assertTrue(text.startswith("uno" + "\n" + "\n" + "due"))
+        self.assertEqual(text.split("\n\n")[:2], ["[00:00:00] uno", f"[{textutil.fmt_time(chunks[1][1])}] due"])
+        self.assertGreaterEqual(chunks[1][1], 1)
         self.assertNotIn("\n" * 3, text)
         self.assertNotIn("Mario", text)
-        self.assertGreaterEqual(n_pieces, 3)
+        self.assertGreaterEqual(len(chunks), 3)
         self.assertEqual(fake.calls[0][2], "Mario Rossi Politecnico di Milano")
 
     def test_progress_and_slicing(self):
@@ -128,6 +129,13 @@ class PipelineTests(unittest.TestCase):
         pipeline.transcribe_wav(fake, wav, "Italian", progress=lambda d, t: seen.append((d, t)))
         self.assertEqual(seen[-1][0], seen[-1][1])
         self.assertTrue(all(n <= fake.batch_size * 4 for n, _, _ in fake.calls))
+
+
+class WerNormalizeTests(unittest.TestCase):
+    def test_normalize_strips_timestamps(self):
+        from benchmark import wer
+
+        self.assertEqual(wer.normalize("[00:01:23] Ciao, mondo.\n\n[01:00:00] Sì"), "ciao mondo sì")
 
 
 class DeviceChoiceTests(unittest.TestCase):
@@ -296,6 +304,7 @@ class DiarizeHelpersTests(unittest.TestCase):
         from localtranscribe import diarize
 
         self.assertEqual(diarize.fmt_time(3725), "01:02:05")
+        self.assertEqual([textutil.fmt_time(s) for s in (0, 83.9, 3725)], ["00:00:00", "00:01:23", "01:02:05"])
         self.assertEqual(diarize.first_appearance_names([(0, 7, "a"), (1, 3, "b"), (2, 7, "c")]), {7: "Parlante 1", 3: "Parlante 2"})
         wav = np.zeros(SR * 30, dtype=np.float32)
         runs = [(0.0, 5.0, 0), (5.0, 8.0, 0), (9.0, 12.0, 1), (13.0, 14.0, 0)]

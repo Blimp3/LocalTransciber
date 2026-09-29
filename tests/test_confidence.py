@@ -139,10 +139,11 @@ class ConfidenceTests(unittest.TestCase):
                 return ["uno", "", "tre"][:len(pieces)]
 
         paragraphs = []
-        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [np.zeros(1), np.zeros(2), np.zeros(3)]):
+        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.zeros(1), 0.0), (np.zeros(2), 20.0), (np.zeros(3), 40.0)]):
             text = pipeline.transcribe_wav(Stub(), None, "Italian", paragraphs=paragraphs)
-        self.assertEqual(text.split("\n\n"), ["uno", "tre"])
-        self.assertEqual([(p["text"], p["tokens"]) for p in paragraphs], [("uno", [1]), ("tre", [3])])
+        self.assertEqual(text.split("\n\n"), ["[00:00:00] uno", "[00:00:40] tre"])
+        self.assertEqual([(p["text"], p["offset"], p["tokens"]) for p in paragraphs],
+                         [("uno", 0.0, [1]), ("tre", 40.0, [3])])
 
     def test_context_echo_clears_aligned(self):
         from localtranscribe import pipeline

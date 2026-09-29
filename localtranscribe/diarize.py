@@ -15,7 +15,7 @@ import numpy as np
 
 from . import config
 from .pipeline import transcribe_pieces
-from .textutil import split_audio_into_chunks
+from .textutil import fmt_time, split_audio_into_chunks  # noqa: F401 (fmt_time is re-exported)
 
 SR = config.SAMPLE_RATE
 SPK_MODEL = config.SPEAKER_MODEL
@@ -206,8 +206,3 @@ def first_appearance_names(turns, prefix="Parlante"):
     for _, spk, _ in turns:
         order.setdefault(spk, f"{prefix} {len(order) + 1}")
     return order
-
-
-def fmt_time(s):
-    s = int(s)
-    return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
