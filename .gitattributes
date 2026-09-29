@@ -1,0 +1,16 @@
+# Shell scripts must keep Unix line endings even when checked out on Windows,
+# otherwise macOS refuses to run them ("bad interpreter: /bin/bash^M").
+*.sh      text eol=lf
+*.command text eol=lf
+*.py      text eol=lf
+*.md      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+requirements*.txt text eol=lf
+
+# Windows launchers keep CRLF.
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+
+# Binary test audio
+*.wav     binary

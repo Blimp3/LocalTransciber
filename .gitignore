@@ -1,0 +1,61 @@
+# --- Python environments and caches ---------------------------------------------------
+.venv/
+venv/
+venv-*/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# --- Model caches and weights (downloaded by the setup scripts, never committed) --------
+models/
+hf_cache/
+.cache/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+*.onnx
+
+# --- Benchmark data and results (FLEURS is downloaded on demand) ----------------------------
+benchmark/data/
+benchmark/results/
+mac_selftest_report.txt
+
+# --- Never commit audio, video, transcripts or documents; only tests/ may hold audio -------
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.opus
+*.flac
+*.aac
+*.wma
+*.amr
+*.mp4
+*.mkv
+*.mov
+*.webm
+*.docx
+*.doc
+*.pdf
+!tests/*.wav
+
+# Transcripts (*.txt) anywhere except the files that belong to the repo
+*.txt
+!requirements*.txt
+!tests/*.txt
+!tests/**/*.txt
+/output/
+/outputs/
+/transcripts/
+
+# --- OS / editor -------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
