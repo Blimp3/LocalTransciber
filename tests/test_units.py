@@ -304,6 +304,23 @@ class DiarizeHelpersTests(unittest.TestCase):
         self.assertEqual(turns, [(0.0, 0, "uno due"), (9.0, 1, "tre"), (13.0, 0, "quattro")])
 
 
+class SetupModelsTests(unittest.TestCase):
+    def test_cache_check_uses_the_patterns_mlx_audio_downloads_with(self):
+        import types
+
+        from localtranscribe import setup_models
+
+        pats = ["*.json", "*.safetensors"]
+        fake_hf = types.SimpleNamespace(snapshot_download=mock.Mock())
+        fake_utils = types.SimpleNamespace(DEFAULT_ALLOW_PATTERNS=pats)
+        mods = {"huggingface_hub": fake_hf, "mlx_audio": types.ModuleType("mlx_audio"), "mlx_audio.utils": fake_utils}
+        with mock.patch.dict(sys.modules, mods), mock.patch.object(devices, "is_apple_silicon", return_value=True):
+            self.assertTrue(setup_models.is_cached("mlx-community/Qwen3-ASR-0.6B-8bit"))
+            self.assertEqual(fake_hf.snapshot_download.call_args.kwargs["allow_patterns"], pats)
+            self.assertTrue(setup_models.is_cached("microsoft/wavlm-base-plus-sv"))
+            self.assertIsNone(fake_hf.snapshot_download.call_args.kwargs["allow_patterns"])
+
+
 class CliTests(unittest.TestCase):
     def test_parser_defaults_match_the_old_tool(self):
         from localtranscribe.cli import build_parser

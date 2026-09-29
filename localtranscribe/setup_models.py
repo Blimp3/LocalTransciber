@@ -36,11 +36,20 @@ def repo_size_gb(repo):
         return None
 
 
+def allow_patterns(repo):
+    """mlx-audio downloads and loads only the model files (not README.md/.gitattributes); check the cache the same way."""
+    if devices.is_apple_silicon() and repo.startswith("mlx-community/"):
+        from mlx_audio.utils import DEFAULT_ALLOW_PATTERNS
+
+        return DEFAULT_ALLOW_PATTERNS
+    return None
+
+
 def is_cached(repo):
     try:
         from huggingface_hub import snapshot_download
 
-        snapshot_download(repo, local_files_only=True)
+        snapshot_download(repo, local_files_only=True, allow_patterns=allow_patterns(repo))
         return True
     except Exception:
         return False
@@ -64,20 +73,16 @@ def describe_downloads(repos):
 
 
 def download_repo(repo):
-    if devices.is_apple_silicon() and repo.startswith("mlx-community/"):
-        from mlx_audio.utils import get_model_path  # same file patterns mlx-audio uses when loading
-
-        return get_model_path(repo)
     from huggingface_hub import snapshot_download
 
-    return snapshot_download(repo)
+    return snapshot_download(repo, allow_patterns=allow_patterns(repo))
 
 
 def verify_offline(repo):
     """Confirm the files are in the local cache (what a run with HF_HUB_OFFLINE=1 will need)."""
     from huggingface_hub import snapshot_download
 
-    snapshot_download(repo, local_files_only=True)
+    snapshot_download(repo, local_files_only=True, allow_patterns=allow_patterns(repo))
 
 
 def main(argv=None):
