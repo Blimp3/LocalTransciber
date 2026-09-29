@@ -152,6 +152,29 @@ def machine_info(rep):
     mps = shell([sys.executable, "-c",
                  "import torch; print('torch MPS available:', torch.backends.mps.is_available(), '| built:', torch.backends.mps.is_built())"], 60)
     rep.add(f"PyTorch:         {mps}")
+    hardware_check(rep)
+
+
+def hardware_check(rep):
+    """What the tool's own hardware check (localtranscribe.precheck) detects and recommends on this Mac. This is the
+    only place where its Mac detection runs on real hardware, so the raw values are recorded too. Never raises."""
+    try:
+        rc, out, _ = run([sys.executable, "-m", "localtranscribe.precheck", "--json", "--no-save"], env=offline_env(), timeout=180)
+        if rc != 0:
+            rep.add("Hardware check: " + failure_text(rc, out))
+            return
+        data = json.loads(out)
+        hw, plan = data["hardware"], data["assessment"]
+        rep.add("Hardware check (localtranscribe.precheck):")
+        rep.add(f"  detected Apple values: {json.dumps(hw.get('apple'), sort_keys=True)}")
+        rep.add(f"  OS: {hw['os'].get('name')} | CPU: {hw['cpu'].get('name')}, {hw['cpu'].get('cores')} cores, "
+                f"{hw['cpu'].get('threads')} threads | memory total {hw['memory'].get('total_gb')} GB, "
+                f"available {hw['memory'].get('available_gb')} GB | disk free {hw['disk'].get('repo_free_gb')} GB")
+        rep.add(f"  recommended: {plan.get('recommended')} (batch "
+                f"{(plan['options'].get(plan.get('recommended')) or {}).get('batch_size')}) | problems: {data.get('problems')}")
+        rep.add(f"  warnings: {plan.get('warnings')} | notes: {plan.get('notes')}")
+    except Exception as e:
+        rep.add(f"Hardware check: could not be read ({type(e).__name__}: {e})")
 
 
 def thermal_snapshot():
@@ -194,7 +217,7 @@ def step_download_models(rep, models, with_speaker_model):
 
 
 def step_smoke(rep):
-    rep.section("Smoke test: command line tool on the committed test clip (--model auto)")
+    rep.section("Smoke test: command line tool on the committed test clip (saved hardware choice, else automatic)")
     clip = os.path.join(ROOT, "tests", "fleurs_it_sample.wav")
     ref_file = os.path.join(ROOT, "tests", "fleurs_it_sample.txt")
     if not (os.path.exists(clip) and os.path.exists(ref_file)):

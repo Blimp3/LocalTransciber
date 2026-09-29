@@ -134,7 +134,9 @@ class DeviceChoiceTests(unittest.TestCase):
     def test_nvidia_model_choice(self):
         with mock.patch.object(devices, "is_apple_silicon", return_value=False):
             self.assertEqual(devices.choose_model("auto", "cuda", 24), config.TORCH_MODELS["best"])
-            self.assertEqual(devices.choose_model("auto", "cuda", 8), config.TORCH_MODELS["light"])
+            # the automatic rule is the precheck's: best from 6 GB of video memory (it was 12 GB before the precheck)
+            for vram, want in ((12, "best"), (8, "best"), (6, "best"), (4, "light"), (3, "light"), (2, "light")):
+                self.assertEqual(devices.choose_model("auto", "cuda", vram), config.TORCH_MODELS[want], vram)
             self.assertEqual(devices.choose_model("auto", "cpu", None), config.TORCH_MODELS["light"])
             self.assertEqual(devices.choose_model("best", "cpu", None), config.TORCH_MODELS["best"])
             self.assertEqual(devices.choose_model("acme/other-model", "cuda", 24), "acme/other-model")
@@ -194,7 +196,8 @@ class ImportHygieneTests(unittest.TestCase):
         import subprocess
 
         code = ("import sys; sys.path.insert(0, %r);"
-                "import localtranscribe.cli, localtranscribe.devices, localtranscribe.pipeline, localtranscribe.backends;"
+                "import localtranscribe.cli, localtranscribe.devices, localtranscribe.pipeline, localtranscribe.backends,"
+                "localtranscribe.precheck, localtranscribe.setup_models;"
                 "bad=[m for m in ('mlx','mlx_audio','torch','qwen_asr','transformers') if m in sys.modules];"
                 "print(bad)" % ROOT)
         out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True).stdout.strip()

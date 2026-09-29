@@ -21,9 +21,13 @@ TORCH_MODELS = {
     "best": "Qwen/Qwen3-ASR-1.7B",
     "light": "Qwen/Qwen3-ASR-0.6B",
 }
-# --model auto: "best" when the GPU has at least this much memory, otherwise "light".
-# On CPU "auto" always means "light".
-NVIDIA_BEST_MIN_VRAM_GB = 12
+# --model auto and the hardware precheck use the same rule (precheck.nvidia_preset_for): "best" when the
+# GPU has at least NVIDIA_BEST_MIN_VRAM_GB of memory, "light" from NVIDIA_LIGHT_MIN_VRAM_GB, and below
+# that the CPU. On CPU "auto" always means "light".
+# Was 12 GB before the precheck existed; best measured 4.0 GB at batch 1 and 5.2 GB at batch 8 on an
+# RTX 6000 (fp16, 20 s pieces), so 6 GB cards run it comfortably at a small batch.
+NVIDIA_BEST_MIN_VRAM_GB = 6
+NVIDIA_LIGHT_MIN_VRAM_GB = 3   # light: 1.7 GB at batch 1 + reserve below
 
 # --------------------------------------------------------------------------------------
 # Apple Silicon: MLX (mlx-audio) with 8-bit quantised weights
@@ -70,3 +74,68 @@ APPROX_DOWNLOAD_GB = {
     "mlx-community/Qwen3-ASR-0.6B-8bit": 1.0,
     "microsoft/wavlm-base-plus-sv": 0.4,
 }
+
+# --------------------------------------------------------------------------------------
+# Hardware precheck (localtranscribe/precheck.py, standard library only)
+# --------------------------------------------------------------------------------------
+# Small file in the repo folder that remembers the choice made by the check (git-ignored).
+SETTINGS_FILE = "localtranscribe_settings.json"
+
+# A "16 GB" computer may report 15.6 GB, a "6 GB" graphics card 5.9 GB: memory thresholds allow this much less.
+MEMORY_ROUNDING_TOLERANCE_GB = 0.5
+
+# --- NVIDIA (PyTorch cu128 wheel, requirements-windows.txt) ---
+# Peak video memory at batch 1, measured on a Quadro RTX 6000 (fp16, 20 s pieces): best 4.0 GB, light 1.7 GB;
+# every extra piece decoded together costs about 0.16 GB (best: 5.2 GB at batch 8, light: 2.8 GB).
+NVIDIA_PEAK_VRAM_GB = {"best": 4.0, "light": 1.7}
+NVIDIA_VRAM_PER_EXTRA_PIECE_GB = 0.16
+# Kept free on top of the peak: CUDA context and allocator slack (measured 0.75 GB for best and 0.45 GB for light
+# as whole-process usage minus torch's peak allocation) plus a safety margin.
+NVIDIA_VRAM_RESERVE_GB = 1.25
+NVIDIA_MAX_BATCH_SIZE = 8
+
+# Oldest GPU the CUDA 12.8 build of PyTorch has kernels for. `torch.cuda.get_arch_list()` of torch 2.11.0+cu128
+# (the version pinned in requirements-windows.txt) returns
+#     ['sm_75', 'sm_80', 'sm_86', 'sm_90', 'sm_100', 'sm_120']
+# so Turing (GeForce GTX 16 / RTX 20 series, Quadro RTX, 2018) is the oldest supported generation; Pascal (sm_61,
+# GTX 10 series) and Volta (sm_70) are not. Re-check this list whenever the torch pin changes.
+NVIDIA_MIN_COMPUTE_CAPABILITY = (7, 5)
+
+# Oldest NVIDIA driver that supports CUDA 12.8 (the CUDA the torch wheel is built with). Source: NVIDIA CUDA
+# Toolkit Release Notes, Table 3 "CUDA Toolkit and Corresponding Driver Versions", row "CUDA 12.8 GA":
+#     Linux x86_64 >=570.26, Windows x86_64 >=570.65
+# https://docs.nvidia.com/cuda/archive/12.8.0/cuda-toolkit-release-notes/index.html
+# (Drivers back to 525.60.13 / 528.33 can run CUDA 12.x programs through "minor version compatibility", but NVIDIA
+# does not guarantee every feature of the wheel there, so the check uses the toolkit minimum.)
+NVIDIA_MIN_DRIVER = {"windows": "570.65", "linux": "570.26"}
+
+# --- Apple Silicon ---
+# The MLX wheels need macOS 14 (Sonoma) or newer.
+MAC_MIN_MACOS = 14
+# On this much memory or less the check adds "close memory-heavy apps".
+MAC_LOW_RAM_GB = 8
+
+# --- CPU only ---
+# Light on the CPU (float32), measured on a 6-core/12-thread Xeon W-3235: about 6 GB process RAM at the peak,
+# 2.6x real time (1 hour of audio in about 23 minutes).
+CPU_LIGHT_PEAK_RAM_GB = 6.0
+CPU_LIGHT_REALTIME_X = 2.6
+CPU_LOW_RAM_WARN_GB = 8
+# Best on the CPU has not been measured: float32 weights alone are about 7 GB. ESTIMATE; below this it is not offered.
+CPU_BEST_MIN_RAM_GB = 16
+CPU_BATCH_SIZE_HIGH_RAM = 2    # pieces decoded together on the CPU when RAM is at least CPU_BATCH_MIN_RAM_GB
+CPU_BATCH_SIZE_LOW_RAM = 1
+CPU_BATCH_MIN_RAM_GB = 12
+
+# --- Accuracy and speed, only used to describe the presets in plain words ---
+# Word error rate on FLEURS Italian (100 clips, two sets and a 24-minute file), NVIDIA float16.
+WER_PERCENT = {"best": (2.4, 2.7), "light": (4.4, 5.8)}
+NVIDIA_REALTIME_X = 26         # RTX 6000: best 25-26x, light 27x
+
+# --- Disk space ---
+# Virtual environment size by install type (measured: NVIDIA about 5 GB, CPU about 1.2 GB, Mac about 1 GB).
+VENV_SIZE_GB = {"nvidia": 5.0, "cpu": 1.2, "mac": 1.0}
+# Free space that must remain after the install (uv download cache, temporary files, the transcripts).
+DISK_MARGIN_GB = 1.0
+# requirements file per install type
+REQUIREMENTS_FILES = {"nvidia": "requirements-windows.txt", "cpu": "requirements-cpu.txt", "mac": "requirements-mac.txt"}

@@ -25,6 +25,10 @@ benchmark/data/
 benchmark/results/
 mac_selftest_report.txt
 
+# --- Choice remembered by the hardware check (per computer, never committed) --------------------
+localtranscribe_settings.json
+localtranscribe_settings.json.tmp
+
 # --- Never commit audio, video, transcripts or documents; only tests/ may hold audio -------
 *.wav
 *.mp3

@@ -6,7 +6,7 @@ import argparse
 import os
 import sys
 
-from . import config, devices
+from . import config, devices, precheck
 from .devices import SetupError
 
 
@@ -82,8 +82,9 @@ def verify_offline(repo):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Download the speech models for offline use.")
-    ap.add_argument("--model", nargs="+", default=["auto"],
-                    help="auto (default), best, light, both, or Hugging Face repo ids")
+    ap.add_argument("--model", nargs="+", default=None,
+                    help="auto, best, light, both, or Hugging Face repo ids "
+                         "(default: what the hardware check saved, else auto)")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
     ap.add_argument("--no-diarization", action="store_true", help="skip the speaker model used by --speakers")
     ap.add_argument("--dry-run", action="store_true", help="only list what would be downloaded")
@@ -94,7 +95,9 @@ def main(argv=None):
         devices.check_platform()
         device = devices.resolve_device(args.device)
         mem_gb = devices.accelerator_memory_gb(device)
-        repos = resolve_repos(args.model, device, mem_gb)
+        saved = precheck.load_settings()
+        names = args.model or ([saved["download"]] if saved else ["auto"])
+        repos = resolve_repos(names, device, mem_gb)
         if not args.no_diarization:
             repos.append(config.SPEAKER_MODEL)
         label = {"cuda": "NVIDIA GPU", "mps": "Apple Silicon", "cpu": "CPU"}[device]

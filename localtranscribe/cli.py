@@ -8,7 +8,7 @@ import os
 import sys
 import time
 
-from . import config, devices
+from . import config, devices, precheck
 from .devices import SetupError
 
 
@@ -26,12 +26,14 @@ def build_parser():
     ap.add_argument("--out-dir", help="write transcripts here instead of next to the input files")
     ap.add_argument("--speakers", type=int, default=0,
                     help="split the transcript by speaker (e.g. 2 for a phone call); works best on calls longer than a few minutes")
-    ap.add_argument("--model", default="auto",
-                    help="best, light, auto (default: light on small GPUs/RAM and on CPU, else best) or a Hugging Face repo id")
-    ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"],
-                    help="auto (default) picks the NVIDIA GPU, the Apple GPU, or the CPU")
+    ap.add_argument("--model", default=None,
+                    help="best, light, auto or a Hugging Face repo id (default: the choice saved by the hardware check, "
+                         "see check_hardware; without one, auto = the best model the memory allows, light on CPU)")
+    ap.add_argument("--device", default=None, choices=["auto", "cuda", "mps", "cpu"],
+                    help="auto picks the NVIDIA GPU, the Apple GPU, or the CPU (default: the saved hardware choice, else auto)")
     ap.add_argument("--batch-size", type=int, default=0,
-                    help="pieces decoded together (default: chosen from the available memory)")
+                    help="pieces decoded together (default: the saved hardware choice, lowered if the free memory is "
+                         "tight; else chosen from the available memory)")
     ap.add_argument("--stats", action="store_true", help="print device, model and peak memory at the end")
     return ap
 
@@ -73,8 +75,45 @@ def main(argv=None):
         return 130
 
 
+def _saved_choice(args):
+    """The choice remembered by the hardware check (setup or check_hardware), or None.
+
+    When there is no usable settings file (someone skipped the setup, or the file is damaged) the check runs once
+    now, without asking, prints its recommendation and saves it; the run then continues with it."""
+    if args.model and args.device and args.batch_size:
+        return None  # everything was given on the command line: nothing to look up
+    path = precheck.settings_path()
+    saved, problem = precheck.read_settings(path)
+    if saved:
+        return saved
+    if problem:
+        print(f"Note: {problem}; checking this computer again.")
+    else:
+        print("No saved hardware check yet (setup and check_hardware make one); checking this computer now.")
+    try:
+        return precheck.first_run_check(settings_file=path)
+    except Exception as e:  # the check must never stop a transcription
+        print(f"Note: the hardware check failed ({type(e).__name__}: {e}); using the automatic choice.")
+        return None
+
+
+def _pin_gpu(saved):
+    """With several NVIDIA GPUs use the one the check chose (nvidia-smi order = PCI bus order). Must run before torch
+    is imported, and never overrides a CUDA_VISIBLE_DEVICES set by the user."""
+    if (saved and saved["device"] == "cuda" and saved.get("gpu_count", 1) > 1 and saved.get("gpu_index") is not None
+            and "CUDA_VISIBLE_DEVICES" not in os.environ):
+        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(saved["gpu_index"])
+
+
 def run(args):
-    device, repo, batch, _mem_gb = devices.resolve_run_config(args.device, args.model, args.batch_size)
+    saved = _saved_choice(args)
+    _pin_gpu(saved)
+    notes = []
+    device, repo, batch, _mem_gb = devices.resolve_run_config(args.device, args.model, args.batch_size,
+                                                              saved=saved, notes=notes)
+    for note in notes:
+        print(f"Note: {note}")
     language = None if args.language.lower() == "auto" else args.language
     if args.chunk > 60:
         print(f"Warning: --chunk {args.chunk:g} is much longer than the tested {config.CHUNK_SECONDS} s; expect more errors.")

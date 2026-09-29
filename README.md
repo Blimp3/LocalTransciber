@@ -24,17 +24,21 @@ You drag files in, you get a `.txt` file next to each recording. It can also spl
 | Free disk space | about 5 GB | about 12 GB (10 GB with one model) | about 4 GB |
 | Internet | only for setup | only for setup | only for setup |
 
-Two speech models are available. The setup picks one for your machine (`--model auto`); you can force either.
+Two speech models are available. The [hardware check](#hardware-check) picks one for your machine and remembers it;
+you can accept or change it, and force either later with `--model`.
 
 | Model | Download | Memory it needs | Accuracy (Italian) | Speed |
 |---|---|---|---|---|
 | **best**: Qwen3-ASR-1.7B | 4.7 GB (NVIDIA) / 2.5 GB (Mac, 8-bit) | NVIDIA: **5.2 GB** video memory (measured, 4.0 GB at the slowest setting); Mac: about 3.5 GB *(estimate)* | word error rate **2.4 - 2.7 %** | NVIDIA RTX 6000: **26x** real time (1 hour of audio in 2.3 minutes) |
 | **light**: Qwen3-ASR-0.6B | 1.9 GB (NVIDIA / CPU) / 1.0 GB (Mac, 8-bit) | NVIDIA: **2.8 GB** video memory (measured); CPU: about 6 GB RAM while loading (measured); Mac: about 2 GB *(estimate)* | word error rate **4.4 - 5.8 %** | NVIDIA: 27x; CPU (6-core Xeon): **2.6x** (1 hour in 23 minutes) |
 
-Which one is chosen automatically:
+Which one is chosen (by the hardware check, and by `--model auto`, which follows the same rules):
 
-- **NVIDIA:** *best* if the card has 12 GB of video memory or more, otherwise *light*. (*best* works from about
-  6 GB: run `transcribe.bat file.wav --model best`.)
+- **NVIDIA:** *best* if the card has 6 GB of video memory or more, *light* from about 3 GB. Below that, or when the
+  card is older than the GeForce GTX 16 / RTX 20 series (2018), or the driver is older than 570.65 (Windows) /
+  570.26 (Linux, the minimum for CUDA 12.8), the processor is used instead (*light*) and the check says why. (Until
+  the hardware check existed the limit for *best* was 12 GB; measured, it needs 4.0 GB at the slowest setting and
+  5.2 GB at batch 8.)
 - **Mac:** *best* if the Mac has 16 GB of memory or more, otherwise *light*. **These Mac defaults are provisional**
   until the self-test below has been run on real hardware.
 - **CPU only:** always *light*.
@@ -68,9 +72,10 @@ Either way you need access to the private GitHub repository (**LocalTransciber**
    ```
 
    It checks that your Mac is supported, installs the small helper tool **uv** if it is missing (from the official
-   installer at astral.sh; it says so before doing it), creates a private Python environment in the `.venv` folder,
-   installs the packages (about 1 GB) and downloads the model for your Mac (1 - 2.5 GB). Allow 10 - 20 minutes.
-   `bash setup_mac.sh both` downloads both models.
+   installer at astral.sh; it says so before doing it), runs the [hardware check](#hardware-check) (press Enter to
+   accept the recommended model), creates a private Python environment in the `.venv` folder, installs the packages
+   (about 1 GB) and downloads the model for your Mac (1 - 2.5 GB). Allow 10 - 20 minutes.
+   `bash setup_mac.sh light` (or `best`) skips the question, `bash setup_mac.sh both` downloads both models.
 
 4. To transcribe: **double-click `Trascrivi.command`** in Finder. The first time, macOS may say it cannot check the
    file because it was downloaded: **right-click it, choose Open, then Open** (only once). A window asks you to pick
@@ -80,10 +85,11 @@ Either way you need access to the private GitHub repository (**LocalTransciber**
 
 ### Windows (NVIDIA GPU or plain CPU)
 
-1. Double-click **`setup_windows.bat`**. It installs **uv** if needed (official installer, announced beforehand), creates
-   the `.venv` folder, installs the packages (about 3 - 5 GB for the NVIDIA version) and downloads the models.
-   It automatically uses the CPU-only packages when no NVIDIA card is found. Options (from a command prompt):
-   `setup_windows.bat light`, `setup_windows.bat both`, `setup_windows.bat auto cpu` (force CPU-only).
+1. Double-click **`setup_windows.bat`**. It installs **uv** if needed (official installer, announced beforehand), runs the
+   [hardware check](#hardware-check) (press Enter to accept the recommended model), creates the `.venv` folder,
+   installs the packages (about 1 - 5 GB, the NVIDIA version is the big one) and downloads the models. It
+   automatically uses the CPU-only packages when no usable NVIDIA card is found. Options (from a command prompt):
+   `setup_windows.bat light`, `setup_windows.bat both`, `setup_windows.bat cpu` (force CPU-only), `--yes` (do not ask).
 2. To transcribe: **drag audio or video files onto `transcribe.bat`**.
 
 If the setup stops because of a network problem, just run it again; it continues where it left off.
@@ -91,6 +97,75 @@ If the setup stops because of a network problem, just run it again; it continues
 *Linux (not tested, not officially supported):* create the environment yourself with
 `uv venv --python 3.11 .venv` and `uv pip install --index-strategy unsafe-best-match -r requirements-windows.txt`
 (NVIDIA) or `requirements-cpu.txt` (no GPU), then run `PYTHONPATH=. .venv/bin/python -m localtranscribe file.m4a`.
+
+---
+
+## Hardware check
+
+The first time you use the project, LocalTranscribe looks at your computer, recommends the model that should run on
+it, lets you accept or change the recommendation, and remembers the choice. The setup scripts do this **first**, before
+anything big is downloaded, so a full disk or an unsupported graphics card shows up while it is still cheap to stop.
+To repeat it at any time (it only looks and saves; it installs and downloads nothing):
+
+```
+check_hardware.bat              (Windows)
+bash check_hardware.sh          (Mac; also Linux, best effort)
+```
+
+Example, on the NVIDIA PC where the tool was developed:
+
+```
+Hardware check
+  Computer : Windows 11 (build 26200), Intel(R) Xeon(R) W-3235 CPU @ 3.30GHz (6 cores, 12 threads), 41 GB memory (32.7 GB free)
+  Graphics : NVIDIA Quadro RTX 6000, 22.5 GB video memory, driver 597.06
+  Disk     : 107 GB free (everything is already installed and downloaded)
+Recommended: best - Qwen3-ASR 1.7B on the NVIDIA GPU (most accurate)
+    about 2.4-2.7 mistakes per 100 words; about 26x real time on an RTX 6000 (1 hour of audio in a few minutes); needs about 6 GB of video memory
+Also possible:
+  light - Qwen3-ASR 0.6B (smaller and lighter): about twice as many mistakes (4.4-5.8 per 100 words), needs less video memory (about 3 GB), similar speed
+Press Enter to use "best", or type "light":
+```
+
+It looks at the operating system (macOS must be 14 or newer; Windows and Linux versions are shown), the processor
+(name, cores, threads), total and available memory, the free disk space where the program lives and where the Hugging
+Face model cache lives (`HF_HOME`, else `~/.cache/huggingface`), the NVIDIA graphics cards (through `nvidia-smi`: memory,
+driver, architecture) or the Apple chip (model, memory, GPU cores, Rosetta). It uses only Python's standard library, so it
+runs before any package is installed.
+
+| Your computer | Recommended | Notes |
+|---|---|---|
+| NVIDIA card with 6 GB of video memory or more | **best** on the GPU | batch size (1 to 8) from the free video memory |
+| NVIDIA card with about 3 - 6 GB | **light** on the GPU | |
+| NVIDIA card below 3 GB, older than GTX 16 / RTX 20 series (compute capability below 7.5), or driver older than 570.65 (Windows) / 570.26 (Linux) | **light** on the processor | the check says which reason applies; updating the driver enables the GPU |
+| No NVIDIA card or driver | **light** on the processor | warns below 8 GB of memory; about 2.6x real time on a 6-core Xeon (1 hour of audio in about 23 minutes), yours may differ |
+| Apple Silicon Mac, 16 GB or more | **best** | provisional, see the self-test below |
+| Apple Silicon Mac, less memory | **light** | 8 GB: "close memory-heavy apps"; MacBook Air: "keep it plugged in for long files" |
+| Intel Mac, macOS older than 14, or Python under Rosetta | nothing | the setup stops and explains what to do |
+| Not enough free disk space | nothing | the setup stops; it says which choice would fit |
+
+Disk space needed = program + models + 1 GB spare: NVIDIA program about 5 GB, CPU-only about 1.2 GB, Mac about 1 GB;
+models 4.7 GB (best) / 1.9 GB (light) on PC, 2.5 GB / 1.0 GB on the Mac, plus the 0.4 GB speaker model. A program
+folder and models that are already there are counted as zero, so running the setup again is never blocked by that.
+
+Options (the same words work for `setup_windows.bat` and `setup_mac.sh`):
+
+```
+check_hardware.bat best         choose without being asked: best, light, both (download both) or cpu (force the processor)
+check_hardware.bat --yes        accept the recommendation without asking (also when there is no keyboard, e.g. in a script)
+check_hardware.bat --json       machine-readable result; nothing is saved unless --yes is added
+check_hardware.bat --no-save    look only
+```
+
+An explicit choice is not asked about, but the check is still shown, with a warning if the choice will not fit (for
+example `best` on a 4 GB card).
+
+**The saved choice** is the file `localtranscribe_settings.json` in the program folder (ignored by git; it holds the
+preset, device, batch size, a hardware summary and the date). `transcribe.bat`, `Trascrivi.command` and
+`transcribe.sh` use it as their default; `--model`, `--device` and `--batch-size` on the command line still win. The
+saved batch size is a ceiling: it is lowered when the video memory that is free at that moment cannot hold it. If the
+file is missing (someone skipped the setup) or damaged, the tool runs the check once without asking, prints the
+recommendation, saves it and carries on; if only one model is downloaded it uses that one. With several NVIDIA cards
+the supported one with the most memory is used. Delete the file to have the check done again.
 
 ---
 
@@ -115,18 +190,19 @@ transcribe.bat interview.m4a --context "Mario Rossi, Politecnico di Milano, LoRa
 | `--speakers 2` | separate the speakers: `[00:01:23] Parlante 1: ...`. Reliable on calls of a few minutes or more; may merge very short replies such as "sì" into the other speaker |
 | `--out-dir folder` | write the transcripts to this folder instead of next to the recordings |
 | `--language auto` | detect the language instead of Italian (or `English`, `French`, `Spanish`, ...) |
-| `--model best`, `light` or a repo id | choose the model (default: automatic, see above) |
-| `--device auto`, `cuda`, `mps`, `cpu` | choose the hardware (default: automatic). On a Mac `mps` is the Apple GPU and `cpu` runs on the processor cores |
-| `--batch-size N` | pieces processed together (default: chosen from the available memory; lower = less memory) |
+| `--model best`, `light` or a repo id | choose the model (default: the choice saved by the hardware check; without one, automatic, see above) |
+| `--device auto`, `cuda`, `mps`, `cpu` | choose the hardware (default: the saved choice, else automatic). On a Mac `mps` is the Apple GPU and `cpu` runs on the processor cores |
+| `--batch-size N` | pieces processed together (default: the saved choice, lowered if memory is tight; lower = less memory) |
 | `--stats` | at the end print the device, model, speed and peak memory used |
 | `--chunk 20` | seconds per piece. Leave at 20: longer pieces are measurably less accurate |
 
 ### MacBook Air M2 notes
 
-- **Which model you get.** Check your memory with **Apple menu > About This Mac**. With **16 GB or 24 GB** the
-  default is the *best* model (Qwen3-ASR-1.7B, 8-bit). With **8 GB** the default is the *light* model
-  (Qwen3-ASR-0.6B, 8-bit). (Provisional; the self-test decides the final rule.) You can try the best model on an
-  8 GB Air with `./transcribe.sh file.m4a --model best`.
+- **Which model you get.** The [hardware check](#hardware-check) reads your memory (you can also see it under
+  **Apple menu > About This Mac**). With **16 GB or 24 GB** it recommends the *best* model (Qwen3-ASR-1.7B, 8-bit).
+  With **8 GB** it recommends the *light* model (Qwen3-ASR-0.6B, 8-bit). (Provisional; the self-test decides the
+  final rule.) You can try the best model on an 8 GB Air with `bash setup_mac.sh best` or
+  `./transcribe.sh file.m4a --model best`.
 - **Keep it plugged in** for long recordings. The Air has no fan, so it slows down when it gets hot; on battery
   it slows down further.
 - **On 8 GB, close memory-hungry programs** (browsers with many tabs, video calls, Photos, Xcode) before transcribing.
@@ -197,6 +273,8 @@ file -> PyAV decoder (16 kHz mono) -> cut at quiet moments into ~20 s pieces -> 
 
 - `localtranscribe/backends/` holds the two backends behind one interface; `mlx` is imported only on a Mac.
 - `localtranscribe/config.py` holds every model name and threshold in one place.
+- `localtranscribe/precheck.py` is the hardware check (standard library only); `devices.py` uses its rules, so
+  `--model auto` and the check always agree.
 - `--context` becomes the model's system prompt on both backends. (On the Mac one extra line break follows the
   context text; without `--context` the prompts are identical.)
 - The chunker differs from the one in `qwen-asr` in two ways: audio up to 25 s stays in one piece, and no cut leaves
@@ -211,7 +289,7 @@ python benchmark/bench.py --data benchmark/data/fleurs_it --model best       # W
 python benchmark/make_longform.py --data benchmark/data/fleurs_it --out long.wav
 ./transcribe.sh long.wav --out-dir out && python benchmark/score_long.py --data benchmark/data/fleurs_it --hyp out/long.txt
 python benchmark/diar_test.py --data benchmark/data/fleurs_it     # two-speaker check of --speakers
-python -m unittest discover -s tests -v                           # unit tests, no model needed
+python -m unittest discover -s tests -v                           # unit tests, no model needed (the hardware check runs on mocked machines)
 ```
 
 (On Windows use `.venv\Scripts\python.exe` instead of `python`, and `transcribe.bat` instead of `./transcribe.sh`.)
@@ -224,7 +302,8 @@ The Apple/MLX path could not be run without a Mac. After `bash setup_mac.sh` on 
 bash mac_selftest.sh          # about an hour; add --n 30 for a quicker run
 ```
 
-It prints the download sizes first, then records the machine (chip, memory, macOS, package versions), and for the
+It prints the download sizes first, then records the machine (chip, memory, macOS, package versions, and what the
+hardware check detects and recommends there), and for the
 presets `Qwen3-ASR-0.6B-8bit`, `1.7B-4bit` and `1.7B-8bit`: WER, real-time factor, peak MLX memory, peak process
 memory and model load time; a comparison of batch sizes 1, 2 and 4; and a `--speakers 2` test (torch device used,
 peak memory). Each step runs in its own process, so a failure or an out-of-memory kill is recorded and the run
@@ -240,6 +319,11 @@ name are removed). Send that file back. Then adjust `MAC_BEST_MIN_RAM_GB`, `MAC_
 - **Windows: "Could not create the Python environment"**: no internet, or a company proxy blocking `github.com`
   (uv downloads Python from there). Install Python 3.11 first, then run the setup again.
 - **Out of memory**: use `--model light`, or `--batch-size 1`, or close other programs.
+- **"Not enough free disk space"** during setup: free some space (the message says how much), or choose the smaller
+  model (`setup_windows.bat light`), or move the model cache with the `HF_HOME` environment variable.
+- **The NVIDIA card is not used**: run `check_hardware.bat`; it says whether the card is too old for the GPU build of
+  PyTorch, or the driver is older than 570.65 (Windows) / 570.26 (Linux) and must be updated from nvidia.com/drivers.
+  Then run the check again and the setup again.
 - **A recording gives an empty or short text**: the file may have no audio track; try another file.
 - **Mac: "cannot be opened because the developer cannot be verified"**: right-click the file, choose **Open**.
 
@@ -273,6 +357,10 @@ quando si scalda). Con 8 GB di memoria **chiudi i programmi pesanti** (browser c
 di trascrivere.
 
 **Windows.** Doppio clic su `setup_windows.bat` (una volta sola), poi **trascina i file audio su `transcribe.bat`**.
+
+**Controllo del computer.** All'installazione il programma controlla il computer (memoria, scheda video, spazio libero)
+e propone il modello adatto: premi Invio per accettare. Puoi ripetere il controllo quando vuoi con `check_hardware.bat`
+(Windows) o `bash check_hardware.sh` (Mac).
 
 **Suggerimento.** Dalla riga di comando puoi indicare nomi e termini tecnici che compaiono nella registrazione con
 `--context "Mario Rossi, Politecnico di Milano"`: la loro trascrizione sarà più precisa. Per separare i parlanti

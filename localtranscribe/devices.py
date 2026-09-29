@@ -7,7 +7,7 @@ import platform
 import subprocess
 import sys
 
-from . import config
+from . import config, precheck
 
 GIB = 1024 ** 3
 
@@ -185,11 +185,11 @@ def choose_model(requested, device, mem_gb):
     mac = is_apple_silicon()
     table = config.MAC_MODELS if mac else config.TORCH_MODELS
     key = requested.lower()
-    if key == "auto":
+    if key == "auto":  # the same rule as the hardware precheck
         if mac:
-            big = mem_gb is not None and mem_gb >= config.MAC_BEST_MIN_RAM_GB - 0.5
+            big = precheck.mac_preset_for(mem_gb) == "best"
         else:
-            big = device == "cuda" and mem_gb is not None and mem_gb >= config.NVIDIA_BEST_MIN_VRAM_GB
+            big = device == "cuda" and precheck.nvidia_preset_for(mem_gb) == "best"
         return table["best" if big else "light"]
     if key in table:
         return table[key]
@@ -204,36 +204,42 @@ def choose_model(requested, device, mem_gb):
     return requested
 
 
-def _weights_gb(repo):
-    """fp16 weight memory of a torch model, from its name (measured: 1.7B 3.9 GB, 0.6B 1.6 GB)."""
-    return 1.6 if "0.6B" in repo else 4.0
-
-
 def choose_batch_size(requested, device, repo, mem_gb=None):
     """Pieces decoded together. Scales down on small accelerators; an explicit --batch-size wins."""
     if requested:
         return max(1, int(requested))
     if is_apple_silicon():
-        ram = total_ram_gb() or 0
-        return config.MAC_BATCH_SIZE_HIGH_RAM if ram >= config.MAC_BEST_MIN_RAM_GB - 0.5 else config.MAC_BATCH_SIZE_LOW_RAM
+        return precheck.mac_batch_size(total_ram_gb())
     if device == "cuda":
         m = cuda_memory_gb()
         free = m[1] if m else (mem_gb or 8)
-        # Measured on an RTX 6000 (fp16, 20 s pieces): each extra piece in a batch costs ~0.16 GB for both
-        # models (1.7B: 4.03 GB at batch 1, 5.17 at 8, 6.46 at 16). Keep 1 GB free for the CUDA context.
-        spare = free - _weights_gb(repo) - 1.0
-        return int(max(1, min(8, spare // 0.2)))
-    ram = total_ram_gb() or 8
-    return 2 if ram >= 12 else 1
+        # From the free video memory: peak at batch 1 plus the measured cost of every extra piece (see config.py).
+        return precheck.nvidia_batch_size(precheck.preset_of_repo(repo), free)
+    return precheck.cpu_batch_size(total_ram_gb())
 
 
-def resolve_run_config(device_arg="auto", model_arg="auto", batch_arg=0):
+def resolve_run_config(device_arg="auto", model_arg="auto", batch_arg=0, saved=None, notes=None):
     """The one place that turns --device/--model/--batch-size into concrete choices.
-    Returns (device, repo, batch_size, accelerator_memory_gb)."""
+    Returns (device, repo, batch_size, accelerator_memory_gb).
+
+    `saved` is the choice remembered by the hardware check (precheck.load_settings). It fills in only what the
+    caller leaves as None (device_arg, model_arg) or 0 (batch_arg); explicit values always win. It is used only when
+    it was made for the device that is actually in use, and the saved batch size is a ceiling: it is lowered when
+    the video memory that is free right now cannot hold it. Reasons for ignoring it are appended to `notes`."""
     check_platform()
-    device = resolve_device(device_arg)
+    implicit_device = device_arg is None
+    if saved and implicit_device and saved["device"] == "cpu":
+        device_arg = "cpu"  # the check chose CPU mode (e.g. unsupported GPU or driver)
+    device = resolve_device(device_arg or "auto")
     mem_gb = accelerator_memory_gb(device)
+    use_saved = bool(saved) and saved["device"] == device
+    if saved and not use_saved and implicit_device and notes is not None:
+        notes.append(f"The saved hardware choice was made for the {saved['device']} but this run uses the {device}; "
+                     "using the automatic choice instead (run check_hardware to update it).")
+    if model_arg is None:
+        model_arg = saved["preset"] if use_saved else "auto"
     repo = choose_model(model_arg, device, mem_gb)
     batch = choose_batch_size(batch_arg, device, repo, mem_gb)
+    if use_saved and not batch_arg and repo == choose_model(saved["preset"], device, mem_gb):
+        batch = min(batch, saved["batch_size"])
     return device, repo, batch, mem_gb
-
