@@ -14,6 +14,9 @@ CHUNK_SECONDS = 20
 # Tokens the model may generate for one piece (a 20-25 s piece needs ~100-150).
 MAX_NEW_TOKENS = 1024
 
+# --confidence: alternatives saved per decoded word-piece (the chosen one is not counted twice).
+CONFIDENCE_TOP_K = 5
+
 # --------------------------------------------------------------------------------------
 # NVIDIA GPU (Windows/Linux) and CPU fallback: PyTorch + the official qwen-asr package
 # --------------------------------------------------------------------------------------

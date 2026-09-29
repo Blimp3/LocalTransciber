@@ -191,6 +191,7 @@ transcribe.bat interview.m4a --context "Mario Rossi, Politecnico di Milano, LoRa
 | `--model best`, `light` or a repo id | choose the model (default: the choice saved by the hardware check; without one, automatic, see above) |
 | `--device auto`, `cuda`, `mps`, `cpu` | choose the hardware (default: the saved choice, else automatic). On a Mac `mps` is the Apple GPU and `cpu` runs on the processor cores |
 | `--batch-size N` | pieces processed together (default: the saved choice, lowered if memory is tight; lower = less memory) |
+| `--confidence` | also save each word-piece's confidence and the model's alternatives to `<recording>.review.json` (for the review tool; Apple Silicon only for now) |
 | `--stats` | at the end print the device, model, speed and peak memory used |
 | `--chunk 20` | seconds per piece. Leave at 20: longer pieces are measurably less accurate |
 

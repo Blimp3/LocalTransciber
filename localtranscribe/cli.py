@@ -4,6 +4,7 @@
     ./transcribe.sh recording.m4a [...]                                                        (Mac)
 """
 import argparse
+import json
 import os
 import sys
 import time
@@ -34,6 +35,9 @@ def build_parser():
     ap.add_argument("--batch-size", type=int, default=0,
                     help="pieces decoded together (default: the saved hardware choice, lowered if the free memory is "
                          "tight; else chosen from the available memory)")
+    ap.add_argument("--confidence", action="store_true",
+                    help="also save each word-piece's confidence and the model's alternatives to <recording>.review.json "
+                         "(for the review tool; Apple Silicon only for now)")
     ap.add_argument("--stats", action="store_true", help="print device, model and peak memory at the end")
     return ap
 
@@ -130,6 +134,12 @@ def run(args):
             print(f"Loading {repo} on the {label} (batch {batch})...", flush=True)
             t0 = time.perf_counter()
             backend = _load_backend(repo, device, batch)
+            if args.confidence:
+                if backend.name == "mlx" and not args.speakers:
+                    backend.record_confidence = True
+                else:
+                    print("  [note] --confidence is not supported with --speakers or on this backend yet; "
+                          "continuing without it.")
             for note in getattr(backend, "notes", []):
                 print(f"  [note] {note}")
             print(f"  loaded in {time.perf_counter() - t0:.0f}s ({backend.describe()})", flush=True)
@@ -153,6 +163,7 @@ def run(args):
         print(f"\n{name}: {duration / 60:.1f} min of audio, transcribing...", flush=True)
 
         start = time.perf_counter()
+        paragraphs = [] if getattr(backend, "record_confidence", False) else None
         if args.speakers:
             from .diarize import diarize, first_appearance_names, fmt_time, transcribe_turns
 
@@ -162,7 +173,7 @@ def run(args):
             names = first_appearance_names(turns)
             text = "\n\n".join(f"[{fmt_time(a)}] {names[s]}: {t}" for a, s, t in turns if t)
         else:
-            text = transcribe_wav(get_backend(), wav, language, args.context, args.chunk, _progress())
+            text = transcribe_wav(get_backend(), wav, language, args.context, args.chunk, _progress(), paragraphs)
         elapsed = time.perf_counter() - start
         audio_total += duration
         time_total += elapsed
@@ -172,6 +183,12 @@ def run(args):
         out_path = os.path.join(out_dir, os.path.splitext(name)[0] + ".md")
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(text + "\n")
+        if paragraphs is not None:
+            side = os.path.splitext(out_path)[0] + ".review.json"
+            with open(side, "w", encoding="utf-8") as f:
+                json.dump({"version": 1, "model": repo, "top_k": config.CONFIDENCE_TOP_K, "paragraphs": paragraphs},
+                          f, ensure_ascii=False)
+            print(f"  confidence -> {side}")
         print(f"  done in {elapsed:.0f}s ({duration / max(elapsed, 1e-6):.0f}x realtime) -> {out_path}")
 
     if args.stats and backend is not None:

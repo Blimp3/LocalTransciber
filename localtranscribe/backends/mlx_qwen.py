@@ -36,16 +36,51 @@ def metal_available(mx):
             return False
 
 
+class _Recorder:
+    """Greedy sampler (same pick as make_sampler(0.0)) that notes, per step, the chosen token's probability
+    and the top-k alternatives. Takes (B, V) logits or log-probs. Only small (B,) / (B, k) arrays are kept and
+    evaluated right away, so the vocab-sized graphs are freed at once."""
+
+    def __init__(self, mx, k=config.CONFIDENCE_TOP_K):
+        self.mx, self.k, self.steps = mx, k, []
+
+    def __call__(self, x):
+        mx = self.mx
+        lp = x - mx.logsumexp(x, axis=-1, keepdims=True)
+        tok = mx.argmax(lp, axis=-1)
+        idx = mx.argpartition(-lp, self.k - 1, axis=-1)[..., :self.k]
+        val = mx.take_along_axis(lp, idx, axis=-1)
+        order = mx.argsort(-val, axis=-1)
+        idx, val = mx.take_along_axis(idx, order, axis=-1), mx.take_along_axis(val, order, axis=-1)
+        p = mx.exp(mx.take_along_axis(lp, tok[..., None], axis=-1))[..., 0]
+        step = (tok, p, idx, mx.exp(val))
+        mx.async_eval(*step)
+        self.steps.append(step)
+        return tok
+
+    def rows(self, counts):
+        """Per row, its first counts[i] steps as (ids, p, alt ids, alt p) Python lists."""
+        mx = self.mx
+        if not self.steps:
+            return [([], [], [], []) for _ in counts]
+        tok, p, idx, val = (mx.stack(a).tolist() for a in zip(*self.steps))  # (S, B), (S, B), (S, B, k), (S, B, k)
+        return [([tok[j][i] for j in range(n)], [p[j][i] for j in range(n)],
+                 [idx[j][i] for j in range(n)], [val[j][i] for j in range(n)]) for i, n in enumerate(counts)]
+
+
 class MlxQwenBackend(Backend):
     name = "mlx"
 
-    def __init__(self, repo, device="mps", batch_size=1):
+    def __init__(self, repo, device="mps", batch_size=1, record_confidence=False):
         import mlx.core as mx
         from mlx_audio.stt import load
 
         self.mx = mx
         self.repo = repo
         self.batch_size = max(1, int(batch_size))
+        self.record_confidence = record_confidence
+        self.last_records = []  # with record_confidence: one {"aligned", "tokens"} per text of the last transcribe()
+        self._recs = []
         self.dtype = next((t for t in ("4bit", "5bit", "6bit", "8bit", "bf16", "fp16") if t in repo.lower()), "mlx")
         self.notes = []
 
@@ -67,6 +102,7 @@ class MlxQwenBackend(Backend):
 
     def transcribe(self, pieces: List[np.ndarray], language: Optional[str], context: str = "") -> List[str]:
         out = [""] * len(pieces)
+        self.last_records = [None] * len(pieces)
         order = list(range(len(pieces)))
         step = self.batch_size  # fixed for this call: a fallback inside _run_group may lower self.batch_size
         if step > 1:
@@ -74,8 +110,11 @@ class MlxQwenBackend(Backend):
         for g in range(0, len(order), step):
             idx = order[g:g + step]
             group = [float_range_normalize(pieces[i]) for i in idx]
+            self._recs = []
             for i, text in zip(idx, self._run_group(group, language, context)):
                 out[i] = text
+            for i, rec in zip(idx, self._recs):
+                self.last_records[i] = self._record(rec, out[i], language)
             self.mx.clear_cache()
         return out
 
@@ -93,6 +132,8 @@ class MlxQwenBackend(Backend):
         return [self._single(p, language, context) for p in group]
 
     def _single(self, piece, language, context):
+        if self.record_confidence:
+            return self._single_recorded(piece, language, context)
         res = self.model.generate(
             piece,
             language=language,
@@ -104,11 +145,24 @@ class MlxQwenBackend(Backend):
         )
         return detect_and_fix_repetitions((res.text or "").strip())
 
+    def _single_recorded(self, piece, language, context):
+        """Like generate() for one piece (see _generate_single_chunk), with the recording sampler."""
+        rec = _Recorder(self.mx)
+        ids = [int(t) for t, _ in self.model.stream_generate(
+            piece, max_tokens=config.MAX_NEW_TOKENS, sampler=rec, language=language, system_prompt=context or None)]
+        text = self.model._tokenizer.decode(ids, skip_special_tokens=True)
+        if language is None:
+            _lang, text = self.model.extract_language(text)
+        self._recs.append(rec.rows([len(ids)])[0])
+        return detect_and_fix_repetitions((text or "").strip())
+
     def _batched(self, group, language, context):
         from mlx_audio.lm.sample_utils import make_sampler
 
         sampler = make_sampler(0.0)  # greedy, like the NVIDIA path
-        texts, _gen, _prompt, processed = self.model._generate_chunks_batched(
+        if self.record_confidence:
+            sampler = _Recorder(self.mx)
+        texts, gen, _prompt, processed = self.model._generate_chunks_batched(
             [(p, 0.0) for p in group],
             max_tokens=config.MAX_NEW_TOKENS * len(group),
             sampler=sampler,
@@ -125,7 +179,22 @@ class MlxQwenBackend(Backend):
             if language is None:
                 _lang, text = self.model.extract_language(text)
             result.append(detect_and_fix_repetitions((text or "").strip()))
+        if self.record_confidence:
+            self._recs.extend(sampler.rows(gen))  # only after success: a failed group leaves no records
         return result
+
+    def _record(self, rec, text, language):
+        """(ids, p, alt ids, alt p) of one piece -> {"aligned", "tokens"} with the token texts."""
+        ids, ps, alt_ids, alt_ps = rec
+        dec = self.model._tokenizer.decode
+        tokens = []
+        for t, p, ai, ap in zip(ids, ps, alt_ids, alt_ps):
+            alts = [[a, dec([a]), round(q, 5)] for a, q in zip(ai, ap) if a != t]
+            tokens.append({"id": t, "text": dec([t]), "p": round(p, 5), "alts": alts})
+        full = dec(ids, skip_special_tokens=True)
+        if language is None:
+            _lang, full = self.model.extract_language(full)
+        return {"aligned": detect_and_fix_repetitions((full or "").strip()) == text, "tokens": tokens}
 
     # ------------------------------------------------------------------ memory
 

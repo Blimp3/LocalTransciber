@@ -58,6 +58,7 @@ localtranscribe_settings.json.tmp
 !CLAUDE.md
 !/.claude/**
 .claude/settings.local.json
+*.review.json
 /output/
 /outputs/
 /transcripts/
