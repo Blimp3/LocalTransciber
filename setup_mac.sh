@@ -49,7 +49,7 @@ say
 
 # Files downloaded as a ZIP lose their executable bit and get a 'quarantine' flag; undo both so that
 # transcribe.sh and Trascrivi.command work (a double-click may still ask once: right-click > Open).
-chmod +x setup_mac.sh transcribe.sh Trascrivi.command Rivedi.command mac_selftest.sh check_hardware.sh 2>/dev/null || true
+chmod +x setup_mac.sh transcribe.sh Trascrivi.command Rivedi.command mac_selftest.sh check_hardware.sh bin/guard-macos-arm64 2>/dev/null || true
 xattr -dr com.apple.quarantine . 2>/dev/null || true
 
 # --- uv -----------------------------------------------------------------------------------
