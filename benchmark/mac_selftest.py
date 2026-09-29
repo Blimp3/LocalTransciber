@@ -226,7 +226,7 @@ def step_smoke(rep):
     with tempfile.TemporaryDirectory() as out_dir:
         rc, out, secs = run([sys.executable, "-m", "localtranscribe", clip, "--out-dir", out_dir, "--stats"],
                             env=offline_env(), timeout=1800)
-        hyp_path = os.path.join(out_dir, "fleurs_it_sample.txt")
+        hyp_path = os.path.join(out_dir, "fleurs_it_sample.md")
         if rc != 0 or not os.path.exists(hyp_path):
             rep.add(failure_text(rc, out))
             return
@@ -343,7 +343,7 @@ def step_diarization(rep, args, tmp):
     rep.add("")
     rep.add(f"command line run (--speakers 2 --stats), {secs:.0f}s, exit code {rc}:")
     rep.add(tail(out, 14))
-    txt = os.path.join(tmp, "two_speakers.txt")
+    txt = os.path.join(tmp, "two_speakers.md")
     if os.path.exists(txt):
         first = open(txt, encoding="utf-8").read().strip().splitlines()
         rep.add("first lines of the transcript:")

@@ -48,11 +48,16 @@ localtranscribe_settings.json.tmp
 *.pdf
 !tests/*.wav
 
-# Transcripts (*.txt) anywhere except the files that belong to the repo
+# Transcripts (*.md, older ones *.txt) anywhere except the files that belong to the repo
 *.txt
+*.md
 !requirements*.txt
 !tests/*.txt
 !tests/**/*.txt
+!README.md
+!CLAUDE.md
+!/.claude/**
+.claude/settings.local.json
 /output/
 /outputs/
 /transcripts/

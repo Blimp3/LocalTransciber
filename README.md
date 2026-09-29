@@ -9,7 +9,7 @@ It uses the open speech model **Qwen3-ASR** and runs on
 - a **Windows PC with an NVIDIA graphics card**,
 - any other computer, on the processor only (slower).
 
-You drag files in, you get a `.txt` file next to each recording. It can also split a two-person phone call into
+You drag files in, you get a `.md` (Markdown) file next to each recording. It can also split a two-person phone call into
 `[00:01:23] Parlante 1: ...` / `Parlante 2: ...` lines.
 
 > Italiano: vai alla [Guida rapida](#guida-rapida-italiano) in fondo.
@@ -79,7 +79,7 @@ Either way you need access to the private GitHub repository (**LocalTransciber**
 
 4. To transcribe: **double-click `Trascrivi.command`** in Finder. The first time, macOS may say it cannot check the
    file because it was downloaded: **right-click it, choose Open, then Open** (only once). A window asks you to pick
-   one or more recordings, transcribes them, and shows the `.txt` files in Finder.
+   one or more recordings, transcribes them, and shows the `.md` files in Finder.
 
    Prefer Terminal? `./transcribe.sh recording.m4a`.
 
@@ -174,7 +174,7 @@ the supported one with the most memory is used. Delete the file to have the chec
 Drag files onto `transcribe.bat` (Windows) or use `Trascrivi.command` (Mac). Any common format works (wav, mp3, m4a,
 ogg, opus, flac, mp4, mkv, webm, ...): the decoder is built in, you do not need to install ffmpeg.
 
-The transcript `<recording name>.txt` is saved next to the recording (long recordings are cut at quiet moments into
+The transcript `<recording name>.md` is saved next to the recording (long recordings are cut at quiet moments into
 pieces of about 20 seconds; each piece becomes a paragraph).
 
 From a terminal there are extra options:
@@ -242,7 +242,7 @@ On a real phone call (6.6 minutes) the best model produced exactly the same text
 Everything runs on your computer. After setup (which downloads the models from Hugging Face and the Python packages from
 the internet) the launchers switch the model library to **offline mode** (`HF_HUB_OFFLINE=1`), so the audio and the
 transcripts never leave the machine and nothing is sent anywhere. No account, no cloud service, no telemetry from this
-tool. Transcripts are plain `.txt` files that you control.
+tool. Transcripts are plain-text Markdown (`.md`) files that you control; any text editor opens them.
 
 ## Licences of what it uses
 
@@ -287,7 +287,7 @@ file -> PyAV decoder (16 kHz mono) -> cut at quiet moments into ~20 s pieces -> 
 python benchmark/download_fleurs.py --n 100                       # clips into benchmark/data/ (about 90 MB)
 python benchmark/bench.py --data benchmark/data/fleurs_it --model best       # WER, speed, peak memory
 python benchmark/make_longform.py --data benchmark/data/fleurs_it --out long.wav
-./transcribe.sh long.wav --out-dir out && python benchmark/score_long.py --data benchmark/data/fleurs_it --hyp out/long.txt
+./transcribe.sh long.wav --out-dir out && python benchmark/score_long.py --data benchmark/data/fleurs_it --hyp out/long.md
 python benchmark/diar_test.py --data benchmark/data/fleurs_it     # two-speaker check of --speakers
 python -m unittest discover -s tests -v                           # unit tests, no model needed (the hardware check runs on mocked machines)
 ```
@@ -350,7 +350,7 @@ oppure PC Windows (meglio con scheda video NVIDIA). Circa 5 GB di spazio libero 
 
 **Uso su Mac.** Doppio clic su **`Trascrivi.command`**. La prima volta, se macOS non lo apre: clic destro sul file,
 **Apri**, poi ancora **Apri**. Scegli uno o più file audio o video; puoi anche far separare due persone che parlano
-(telefonate). Il testo viene salvato accanto a ogni file audio (stesso nome, estensione `.txt`) e compare nel Finder.
+(telefonate). Il testo viene salvato accanto a ogni file audio (stesso nome, estensione `.md`) e compare nel Finder.
 
 **Consigli per il MacBook Air.** Tienilo **collegato all'alimentazione** per i file lunghi (non ha ventola e rallenta
 quando si scalda). Con 8 GB di memoria **chiudi i programmi pesanti** (browser con molte schede, videochiamate) prima

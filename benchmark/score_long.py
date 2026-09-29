@@ -1,6 +1,6 @@
 """Score a long-form transcript against the FLEURS references joined in order.
 
-    python benchmark/score_long.py --data <fleurs folder> --hyp long_it.txt [--n 100]
+    python benchmark/score_long.py --data <fleurs folder> --hyp long_it.md [--n 100]
 
 The long recording is the FLEURS clips concatenated in references.csv order (see make_longform.py),
 so the reference text is simply all references joined. Prints the word error rate.
@@ -14,7 +14,7 @@ import wer as werlib
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", required=True, help="folder with references.csv")
-    ap.add_argument("--hyp", required=True, nargs="+", help="transcript .txt file(s)")
+    ap.add_argument("--hyp", required=True, nargs="+", help="transcript .md file(s)")
     ap.add_argument("--n", type=int, default=0, help="number of clips the long file was built from (default: all)")
     args = ap.parse_args()
     reference = " ".join(r["reference"] for r in werlib.load_references(args.data, args.n))

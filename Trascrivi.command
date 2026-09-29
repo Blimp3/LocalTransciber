@@ -1,6 +1,6 @@
 #!/bin/bash
 # Doppio clic in Finder: scegli uno o piu file audio/video, li trascrive (tutto sul tuo Mac)
-# e mostra i file .txt nel Finder. Il .txt viene creato accanto a ogni file audio.
+# e mostra i file .md nel Finder. Il .md viene creato accanto a ogni file audio.
 cd "$(dirname "$0")" || exit 1
 DIR="$(pwd)"
 export HF_HUB_OFFLINE=1
@@ -55,7 +55,7 @@ STATUS=$?
 OUTS=()
 for f in "${FILES[@]}"; do
   base="$(basename "$f")"
-  out="$(dirname "$f")/${base%.*}.txt"
+  out="$(dirname "$f")/${base%.*}.md"
   [ -f "$out" ] && OUTS+=("$out")
 done
 if [ ${#OUTS[@]} -gt 0 ]; then
@@ -64,7 +64,7 @@ fi
 
 echo
 if [ $STATUS -eq 0 ]; then
-  echo "Fatto. I file .txt sono accanto ai file audio (li trovi selezionati nel Finder)."
+  echo "Fatto. I file .md sono accanto ai file audio (li trovi selezionati nel Finder)."
 else
   echo "Finito con qualche problema (vedi i messaggi sopra)."
 fi

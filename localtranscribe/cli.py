@@ -1,4 +1,4 @@
-"""Command-line interface: transcribe audio/video files to .txt, locally.
+"""Command-line interface: transcribe audio/video files to .md (Markdown), locally.
 
     transcribe.bat recording.m4a [video.mp4 ...] [--context "names, jargon"] [--speakers 2]   (Windows)
     ./transcribe.sh recording.m4a [...]                                                        (Mac)
@@ -169,7 +169,7 @@ def run(args):
 
         out_dir = args.out_dir or os.path.dirname(os.path.abspath(path))
         os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, os.path.splitext(name)[0] + ".txt")
+        out_path = os.path.join(out_dir, os.path.splitext(name)[0] + ".md")
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(text + "\n")
         print(f"  done in {elapsed:.0f}s ({duration / max(elapsed, 1e-6):.0f}x realtime) -> {out_path}")

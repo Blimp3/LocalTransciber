@@ -313,8 +313,8 @@ class CliTests(unittest.TestCase):
                          ("Italian", 20, 0, "", None))
 
     def test_output_name_rule(self):
-        # <input name without extension>.txt, next to the input unless --out-dir is given
-        self.assertEqual(os.path.splitext(os.path.basename("dir/My call.m4a"))[0] + ".txt", "My call.txt")
+        # <input name without extension>.md, next to the input unless --out-dir is given
+        self.assertEqual(os.path.splitext(os.path.basename("dir/My call.m4a"))[0] + ".md", "My call.md")
 
 
 if __name__ == "__main__":
