@@ -1,5 +1,6 @@
 """Unit tests that need no model, no GPU and no network.   python -m unittest discover -s tests -v"""
 import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -361,6 +362,18 @@ class BackupNameTests(unittest.TestCase):
             open(first, "w").close()
             self.assertEqual(textutil.backup_name(md), os.path.join(d, "a.bak-20260930-101010-2.md"))
             self.assertEqual(textutil.backup_name(md, "new"), os.path.join(d, "a.new-20260930-101010.md"))
+
+    def test_backup_of_a_read_only_transcript_is_writable(self):
+        with tempfile.TemporaryDirectory() as d:
+            src, dst = os.path.join(d, "a.md"), os.path.join(d, "a.bak.md")
+            open(src, "w").write("old\n")
+            os.chmod(src, stat.S_IREAD)
+            try:
+                textutil.sync_copy(src, dst)
+                self.assertTrue(os.stat(dst).st_mode & stat.S_IWRITE)
+                os.remove(dst)  # Windows refuses to remove a read-only file
+            finally:
+                os.chmod(src, stat.S_IREAD | stat.S_IWRITE)
 
 
 class DiarizeHelpersTests(unittest.TestCase):

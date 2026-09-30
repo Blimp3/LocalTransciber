@@ -145,7 +145,7 @@ class Server(unittest.TestCase):
         self.assertEqual((self.read(), os.listdir(self.dir.name)), (PLAIN, ["r.md"]))
 
     def test_failed_backup_does_not_overwrite(self):
-        with mock.patch("shutil.copy2", side_effect=OSError("disk full")):
+        with mock.patch("shutil.copyfile", side_effect=OSError("disk full")):
             self.assertEqual(self.save("x").code, 500)
         self.assertEqual((self.read(), os.listdir(self.dir.name)), (PLAIN, ["r.md"]))
 
@@ -160,7 +160,7 @@ class Server(unittest.TestCase):
                 f.write("[00:00")
             raise OSError("disk full")
 
-        with mock.patch("shutil.copy2", half):
+        with mock.patch("shutil.copyfile", half):
             self.assertEqual(self.save("x").code, 500)
         self.assertEqual(os.listdir(self.dir.name), ["r.md"])
 

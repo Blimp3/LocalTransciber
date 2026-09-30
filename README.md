@@ -123,10 +123,11 @@ A transcript can take an hour to make and longer to correct, so the program neve
   `<recording>.bak-<date>.md`.
 - **Before the model loads**, the program checks that every recording exists and that the output folder can be
   written, so a locked folder is reported in seconds, not after the work is done.
-- **While a recording is being transcribed**, the text done so far is in `<recording>.partial.md`. If the computer
-  crashes, the battery dies or you press Ctrl+C, that file stays; it is removed when the transcript is complete.
-- **If the `.md` cannot be replaced** (on Windows: it is open in Word, or an antivirus or sync program is holding
-  it), the program tries three times, then saves the new transcript as `<recording>.new-<date>.md` next to it (or in
+- **While a recording is being transcribed**, the text done so far is in `<recording>.partial.md` (it appears once
+  the first pieces are done, usually within a minute, and grows every few pieces). If the computer crashes, the
+  battery dies or you press Ctrl+C, that file stays; it is removed when the transcript is complete.
+- **If the `.md` cannot be replaced** (on Windows: it is open in Word, marked read-only, or an antivirus or sync
+  program is holding it), the program tries three times, then saves the new transcript as `<recording>.new-<date>.md` next to it (or in
   your home folder if that fails too) and says so. The old transcript is not touched.
 - **If the model returns no text at all**, nothing is written: the program says that no speech was recognised and
   leaves any existing transcript alone. (On pure silence the speech model can still invent a short phrase; skipping

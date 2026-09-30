@@ -160,9 +160,10 @@ class CliTest(unittest.TestCase):
         loaded = []
         wav = self.p("a.wav")
         with mock.patch.object(cli, "_load_backend", lambda *a: loaded.append(1)), \
-                mock.patch.object(cli.tempfile, "TemporaryFile", side_effect=PermissionError("denied")):
+                mock.patch.object(cli.os, "open", side_effect=PermissionError("denied")) as probe:
             with self.assertRaises(SetupError) as cm:
                 self._cli_run([wav])
+        self.assertEqual(probe.call_count, 1)  # one attempt: a retry loop hangs on a folder that denies writing
         self.assertIn(self.d, str(cm.exception))
         self.assertIn("--out-dir", str(cm.exception))
         self.assertEqual(loaded, [])
@@ -527,8 +528,9 @@ class CliTest(unittest.TestCase):
     def test_probe_that_cannot_be_removed_does_not_block(self):
         wav = self.p("a.wav")
         with mock.patch.object(cli.os, "remove", side_effect=PermissionError("held by the antivirus")):
-            cli._check_inputs_and_folders([wav], None)
-        self.assertEqual(os.listdir(self.d), ["a.wav"])
+            cli._check_inputs_and_folders([wav], None)  # the folder is writable: no SetupError
+        if hasattr(os, "O_TEMPORARY"):  # Windows deletes the probe itself on close
+            self.assertEqual(os.listdir(self.d), ["a.wav"])
 
     def test_new_out_dir_created_before_the_model_loads(self):
         wav, out = self.p("a.wav"), os.path.join(self.d, "new", "sub")
@@ -606,7 +608,7 @@ class CliTest(unittest.TestCase):
                 f.write("ol")
             raise OSError("disk full")
 
-        with mock.patch.object(cli, "SAVE_RETRY_SECONDS", 0), mock.patch("shutil.copy2", half), \
+        with mock.patch.object(cli, "SAVE_RETRY_SECONDS", 0), mock.patch("shutil.copyfile", half), \
                 mock.patch.object(cli.os.path, "expanduser", lambda p: home.name):
             self.assertEqual(run([wav], ["fresh"]), 1)
         self.assertEqual(open(md).read(), "old\n")

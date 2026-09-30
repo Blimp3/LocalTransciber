@@ -7,8 +7,9 @@ import argparse
 import json
 import math
 import os
+import secrets
+import signal
 import sys
-import tempfile
 import time
 
 from . import config, devices, precheck
@@ -51,8 +52,11 @@ def _check_inputs_and_folders(files, out_dir):
     for folder in dict.fromkeys(os.path.dirname(_out_path(f, out_dir)) for f in files):
         try:
             os.makedirs(folder, exist_ok=True)
-            with tempfile.TemporaryFile(dir=folder):  # deleted by the system on close: no remove to fail on Windows
-                pass
+            # One attempt, by hand: tempfile retries for hours on Windows when an access rule denies writing.
+            # O_TEMPORARY (Windows) deletes the file on close, so no remove can fail there.
+            probe = os.path.join(folder, f".write-test-{os.getpid()}-{secrets.token_hex(4)}")
+            os.close(os.open(probe, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_TEMPORARY", 0)))
+            _remove(probe)
         except OSError as e:
             raise SetupError(f"Cannot write in the folder {folder} ({e}). Use --out-dir with a folder that can be "
                              "written, or copy the recording to such a folder.") from e
@@ -158,7 +162,7 @@ def _save_transcript(out_path, text):
         except OSError as e:
             why = e
             continue
-        print(f"  [note] could not replace {out_path} ({err}); is it open in another program? "
+        print(f"  [note] could not replace {out_path} ({err}); is it open in another program, or read-only? "
               f"The transcript was saved as {alt} instead.")
         return alt
     raise why
@@ -256,6 +260,11 @@ def main(argv=None):
     for stream in (sys.stdout, sys.stderr):  # a console that cannot show a character must not fail a print mid-save
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
+    if hasattr(signal, "SIGBREAK"):  # Windows Ctrl+Break: end like Ctrl+C, so the partial file is announced
+        try:
+            signal.signal(signal.SIGBREAK, signal.default_int_handler)
+        except ValueError:  # not the main thread
+            pass
     args = build_parser().parse_args(argv)
     try:
         return run(args)

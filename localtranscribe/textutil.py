@@ -227,8 +227,9 @@ def sync(f):
 
 
 def sync_copy(src, dst):
-    """shutil.copy2, then the copy is pushed to the disk too (best effort: Windows needs a writable handle)."""
-    shutil.copy2(src, dst)
+    """Copy the content, then push the copy to the disk too (best effort: Windows needs a writable handle). Only
+    the content: a read-only flag copied along would stop Windows from syncing or removing the backup."""
+    shutil.copyfile(src, dst)
     try:
         with open(dst, "rb+") as f:
             os.fsync(f.fileno())
