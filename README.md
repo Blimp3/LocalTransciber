@@ -135,7 +135,7 @@ A transcript can take an hour to make and longer to correct, so the program neve
   leaves any existing transcript alone. A silent piece of the recording (about 20 s, with no tenth of a second louder
   than -60 dBFS, such as digital silence) is not sent to the speech model, which would only invent a phrase there
   ("Grazie a tutti."); the program says how many seconds it left out as silence. A pause with background noise still
-  reaches the model, which can still invent a short phrase there.
+  reaches the model; in the measurements Qwen3-ASR read through 2-15 s pauses without inventing words.
 - **The review page** keeps a `.bak` copy of the file on disk if it changed after the page was opened (a new
   transcription, a second browser tab) before it saves your version. If saving fails, your edits stay on the page
   and it says why.
@@ -276,8 +276,8 @@ then `PYTHONPATH=. .venv/bin/python -m localtranscribe file.m4a`.
 ## Roadmap
 
 The review page and the AI suggestions are done, measured on clips they were not tuned on, and offered from the
-double-click launcher. Next: measure on real calls and lectures, reach more mistakes with fewer false alarms, and
-evaluate trimming pauses inside pieces (silent pieces are already skipped). Details in [ROADMAP.md](ROADMAP.md).
+double-click launcher; silent pieces are skipped. Next: measure on real calls and lectures, reach more mistakes with
+fewer false alarms, and measure a short lead-in before each piece. Details in [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 

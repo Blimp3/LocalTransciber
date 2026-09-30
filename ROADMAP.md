@@ -46,7 +46,9 @@ review and correction on top without changing how it is used.
 - Silent pieces (no tenth of a second louder than -60 dBFS, such as digital silence) are no longer sent to the speech
   model: on such pieces every model tested invented a phrase ("Non è vero.", "Grazie a tutti."). The program says how
   many seconds it left out as silence. Checked without a model on 1,930 speech pieces (FLEURS, VoxPopuli, also after
-  phone and Opus codecs): the quietest is 30 dB above the limit.
+  phone and Opus codecs): the quietest is 30 dB above the limit. Measured on 12 speeches with 2-15 s pauses inserted:
+  the gate removes exactly the invented words of the silent pieces and changes nothing else, for every model tested
+  (Qwen3-ASR 1.7B: word error rate 7.2 % to 6.7 %); every other test set is unchanged.
 
 ## Next: better suggestions
 
@@ -61,10 +63,14 @@ review and correction on top without changing how it is used.
 
 - **Whisper as an alternative backend**, A/B-tested against Qwen3-ASR on real phone calls and lecture recordings
   rather than only on FLEURS read speech. The backend interface already allows it.
-- **Trimming pauses inside pieces** (voice activity detection before cutting). Skipping silent pieces only catches
-  pieces that are quiet from start to end: on a test set with 2-15 s pauses inserted into 12 speeches, 94 % of the
-  pause time lies inside pieces that also hold speech, and a real room is louder than the limit (VoxPopuli's
-  background is around -42 dBFS), so those pauses still reach the model.
+- **A short lead-in before each piece.** A piece that starts right on speech can lose its first words; 0.5-1 s of
+  silence in front of every piece is being measured on 1,177 VoxPopuli clips and on FLEURS.
+- **Trimming long silences inside pieces.** On the 12 speeches with inserted pauses, 94 % of the pause time lies
+  inside pieces that also hold speech. After the silence gate, Qwen3-ASR reads through those pauses without
+  inventing words (what looked like invented text at file starts turned out to be real speech that the reference
+  transcripts leave out), so no trimming is planned for it. Whisper loses the speech that follows 3 s or more of
+  digital silence in a piece, so a trim belongs to the Whisper evaluation. A real room is louder than the gate's
+  limit (VoxPopuli's background is around -42 dBFS): pauses with noise need a voice activity detector, not a level.
 - **Parakeet as a small, fast candidate.** NVIDIA's Parakeet TDT 0.6B v3 (CC-BY-4.0) covers 25 European languages
   including Italian (NVIDIA reports 3.0 % WER on FLEURS Italian), and the MLX library this program already uses on
   the Mac can run it, also in a much smaller ternary version. To be tested on the Mac against Qwen3-ASR and Whisper
