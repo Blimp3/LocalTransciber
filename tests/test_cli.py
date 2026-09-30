@@ -160,7 +160,7 @@ class CliTest(unittest.TestCase):
         loaded = []
         wav = self.p("a.wav")
         with mock.patch.object(cli, "_load_backend", lambda *a: loaded.append(1)), \
-                mock.patch.object(cli.os, "open", side_effect=PermissionError("denied")) as probe:
+                mock.patch.object(cli.os, "open", side_effect=[PermissionError("no"), AssertionError("retried")]) as probe:
             with self.assertRaises(SetupError) as cm:
                 self._cli_run([wav])
         self.assertEqual(probe.call_count, 1)  # one attempt: a retry loop hangs on a folder that denies writing

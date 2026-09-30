@@ -291,8 +291,8 @@ command-line wrapper that Python calls. If you touch any of them, run `bend PROO
   model (`setup_windows.bat light`), or move the model cache with the `HF_HOME` environment variable.
 - **The NVIDIA card is not used**: run `check_hardware.bat`; it says whether the card is too old for the GPU build of
   PyTorch or the driver must be updated from nvidia.com/drivers. Then run the setup again.
-- **"no speech was recognised"**: the model returned no text (a silent recording). Nothing is written and an
-  existing transcript is left alone.
+- **"no speech was recognised"**: the model returned no text (for example a recording without speech). Nothing is
+  written and an existing transcript is left alone.
 - **"could not read audio (no audio track found)"**: the file has no sound track, for example a silent video.
 - **"could not replace ... The transcript was saved as ..."**: the `.md` is open in another program (on Windows,
   Word locks it). The new transcript is in `<recording>.new-<date>.md`; close the other program and keep the file
