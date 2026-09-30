@@ -73,7 +73,9 @@ review and correction on top without changing how it is used.
   inventing words (what looked like invented text at file starts turned out to be real speech that the reference
   transcripts leave out), so no trimming is planned for it. Whisper loses the speech that follows 3 s or more of
   digital silence in a piece, so a trim belongs to the Whisper evaluation. A real room is louder than the gate's
-  limit (VoxPopuli's background is around -42 dBFS): pauses with noise need a voice activity detector, not a level.
+  limit (VoxPopuli's background is around -42 dBFS): pauses with noise need a voice activity detector, not a level
+  (with -42 dBFS noise in the pauses instead of digital silence, Qwen3-ASR invented a short phrase on 3 of the 12
+  noisy tails and dropped one sentence; a lecture room at -61 dBFS showed none of this).
 - **Parakeet as a small, fast candidate.** NVIDIA's Parakeet TDT 0.6B v3 (CC-BY-4.0) covers 25 European languages
   including Italian (NVIDIA reports 3.0 % WER on FLEURS Italian), and the MLX library this program already uses on
   the Mac can run it, also in a much smaller ternary version. To be tested on the Mac against Qwen3-ASR and Whisper
