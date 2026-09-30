@@ -55,7 +55,9 @@ review and correction on top without changing how it is used.
 
 ## Next: better suggestions
 
-- Measure on real calls and lectures, not only FLEURS read speech.
+- Measure on real calls and lectures, not only FLEURS read speech. First real lecture (95 minutes of university
+  mathematics, NVIDIA, Qwen3-ASR 1.7B): 31x real time, 285 paragraphs, no invented text, no loops, no stock phrases
+  at pauses; about 1 % of the cuts between pieces may repeat the word at the cut (to be checked by ear).
 - Reach more mistakes: the right word is among the candidates for only about 38 % of flagged mistakes; many of the
   rest are numbers written out ("dieci" for "10") or two neighbouring words wrong together.
 - Fewer false alarms: a bit less than half of the suggestions are real fixes (a higher weight on the speech model,
