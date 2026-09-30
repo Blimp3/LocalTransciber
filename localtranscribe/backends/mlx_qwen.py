@@ -14,8 +14,8 @@ Everything below was checked against the source of the pinned mlx-audio 0.5.7
   * With batch_size > 1 we call `_generate_chunks_batched` (private, present in 0.5.7) so that
     several of OUR pieces decode together; any error there drops back to the public API.
 
-`_single_recorded` is adapted from mlx-audio 0.5.7 (MIT, Copyright (c) 2024 Prince Canuma; the license text is in
-the NOTICE file).
+`_single_recorded` is adapted from mlx-audio 0.5.7 (MIT, Copyright (c) 2024 Prince Canuma) and from the mlx-lm
+generate_step it includes (MIT, Copyright (c) 2023 Apple Inc.); the license text is in the NOTICE file.
 """
 import sys
 from typing import List, Optional

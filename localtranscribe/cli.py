@@ -37,7 +37,7 @@ def _check_distinct_outputs(files, out_dir):
     """Two inputs that would write the same .md (a.wav + a.mp3) must not silently overwrite each other."""
     seen = {}
     for f in files:
-        out = os.path.normcase(os.path.abspath(_out_path(f, out_dir)))
+        out = os.path.abspath(_out_path(f, out_dir)).casefold()  # macOS and Windows disks ignore case
         if out in seen:
             raise SetupError(f"{seen[out]} and {f} would both write {out}. Rename one of them or run them separately.")
         seen[out] = f

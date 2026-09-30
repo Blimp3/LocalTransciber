@@ -91,6 +91,10 @@ class CliTest(unittest.TestCase):
         self.assertEqual(loaded, [])
         self.assertEqual(run([self.p("a.wav"), self.p("a.mp3")], ["x", "y"]), 2)
 
+    def test_duplicate_output_ignores_case(self):
+        with self.assertRaises(SetupError):  # a.md and A.md are one file on macOS and Windows disks
+            cli._check_distinct_outputs([self.p("a.wav"), self.p("A.mp3")], None)
+
     def test_stale_sidecar_removed_without_confidence(self):
         wav, side = self.p("a.wav"), self.p("a.review.json")
         json.dump({"version": 1, "paragraphs": []}, open(side, "w"))

@@ -38,7 +38,7 @@ review and correction on top without changing how it is used.
   short voice note no longer crashes `--speakers`, and the review page saves in order.
 - A finished transcript is never lost: the output folder is checked before the model loads, the text done so far is
   kept in `<name>.partial.md` while a long recording runs, a `.md` that cannot be replaced (open in another program)
-  is saved as `<name>.new-<date>.md`, a silent recording writes nothing, and the review page keeps a `.bak` copy when
+  is saved as `<name>.new-<date>.md`, an empty result writes nothing, and the review page keeps a `.bak` copy when
   the file changed on disk.
 
 ## Next: better suggestions

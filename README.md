@@ -128,8 +128,9 @@ A transcript can take an hour to make and longer to correct, so the program neve
 - **If the `.md` cannot be replaced** (on Windows: it is open in Word, or an antivirus or sync program is holding
   it), the program tries three times, then saves the new transcript as `<recording>.new-<date>.md` next to it (or in
   your home folder if that fails too) and says so. The old transcript is not touched.
-- **A silent recording writes nothing**: the program says that no speech was recognised and leaves any existing
-  transcript alone.
+- **If the model returns no text at all**, nothing is written: the program says that no speech was recognised and
+  leaves any existing transcript alone. (On pure silence the speech model can still invent a short phrase; skipping
+  silence is on the [roadmap](ROADMAP.md).)
 - **The review page** keeps a `.bak` copy of the file on disk if it changed after the page was opened (a new
   transcription, a second browser tab) before it saves your version. If saving fails, your edits stay on the page
   and it says why.
@@ -289,12 +290,15 @@ command-line wrapper that Python calls. If you touch any of them, run `bend PROO
   model (`setup_windows.bat light`), or move the model cache with the `HF_HOME` environment variable.
 - **The NVIDIA card is not used**: run `check_hardware.bat`; it says whether the card is too old for the GPU build of
   PyTorch or the driver must be updated from nvidia.com/drivers. Then run the setup again.
-- **"no speech was recognised"**: the recording is silent or has no audio track. Nothing is written and an existing
-  transcript is left alone.
-- **"could not be replaced"**: the `.md` is open in another program (on Windows, Word locks it). The new transcript
-  was saved as `<recording>.new-<date>.md`; close the other program and keep the file you want.
+- **"no speech was recognised"**: the model returned no text (a silent recording). Nothing is written and an
+  existing transcript is left alone.
+- **"could not read audio (no audio track found)"**: the file has no sound track, for example a silent video.
+- **"could not replace ... The transcript was saved as ..."**: the `.md` is open in another program (on Windows,
+  Word locks it). The new transcript is in `<recording>.new-<date>.md`; close the other program and keep the file
+  you want.
 - **The run stopped half-way** (crash, empty battery, Ctrl+C): the text done so far is in `<recording>.partial.md`.
-  Run the transcription again for the whole text.
+  Run the transcription again for the whole text; the new run replaces the partial file, so copy it first if you
+  corrected it by hand.
 - **Mac: "cannot be opened because the developer cannot be verified"**: right-click the file, choose **Open**.
 
 ## Updating and uninstalling
@@ -310,8 +314,9 @@ folder.
 - the models, 2 - 7 GB, in the Hugging Face cache: `~/.cache/huggingface/hub` on Mac and Linux,
   `%USERPROFILE%\.cache\huggingface\hub` on Windows (the folders named `models--mlx-community--Qwen3-...`,
   `models--Qwen--Qwen3-ASR-...` and `models--microsoft--wavlm-base-plus-sv`);
-- optionally uv, its download cache and the Python it installed: run `uv cache clean` and
-  `uv python uninstall --all`, then delete `uv` (`~/.local/bin/uv` on a Mac).
+- optionally, and only if the setup installed uv for you (you did not use uv before): its download cache and
+  the Python it fetched, with `uv cache clean` and `uv python uninstall 3.11`, then `uv` itself (`~/.local/bin/uv`
+  on a Mac).
 
 ## Privacy
 
@@ -331,7 +336,8 @@ repository (the notices are in [`NOTICE`](NOTICE)):
   [`qwen-asr`](https://github.com/QwenLM/Qwen3-ASR) (Apache-2.0, copyright The Alibaba Qwen team), with the changes
   described above.
 - The decoding loop that records word confidence (`_single_recorded` in `localtranscribe/backends/mlx_qwen.py`) is
-  adapted from [`mlx-audio`](https://github.com/Blaizzy/mlx-audio) (MIT, copyright Prince Canuma).
+  adapted from [`mlx-audio`](https://github.com/Blaizzy/mlx-audio) (MIT, copyright Prince Canuma) and the
+  [`mlx-lm`](https://github.com/ml-explore/mlx-lm) generation loop it includes (MIT, copyright Apple Inc.).
 - `bin/guard-macos-arm64` is compiled from `guard_cli.bend` with [Bend](https://github.com/HigherOrderCO/Bend)
   (Apache-2.0, copyright HigherOrderCO) and contains Bend's runtime code.
 

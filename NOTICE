@@ -9,9 +9,11 @@ made to them.
 
 This product includes code adapted from mlx-audio
 (https://github.com/Blaizzy/mlx-audio), Copyright (c) 2024 Prince
-Canuma, licensed under the MIT License (full text below). See
-_single_recorded in localtranscribe/backends/mlx_qwen.py: the decoding
-loop of mlx-audio 0.5.7 (stream_generate and generate_step), changed to
+Canuma, and from mlx-lm (https://github.com/ml-explore/mlx-lm),
+Copyright (c) 2023 Apple Inc., which mlx-audio includes; both are
+licensed under the MIT License (full text below). See _single_recorded
+in localtranscribe/backends/mlx_qwen.py: the decoding loop of mlx-audio
+0.5.7 (stream_generate, and generate_step from mlx-lm), changed to
 record each word-piece's probability and to keep the cache.
 
 The file bin/guard-macos-arm64 is compiled from guard_cli.bend and
@@ -21,11 +23,12 @@ Version 2.0, and contains Bend's runtime code. The LICENSE file in this
 repository is a copy of that license.
 
 ------------------------------------------------------------------------
-mlx-audio
+mlx-audio and mlx-lm
 
 MIT License
 
 Copyright (c) 2024 Prince Canuma
+Copyright (c) 2023 Apple Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
