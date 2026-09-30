@@ -291,20 +291,20 @@ class CacheReuseTests(unittest.TestCase):
         self.assertEqual(be2.model.encodes, 3)  # batched decoding never encodes here: 3 fresh caches, one per piece
 
     def test_silent_pieces_are_skipped_without_shifting_records_or_the_kept_cache(self):
-        pieces = [self.pieces(5)[0], np.zeros(8, np.float32), np.zeros(9, np.float32), self.pieces(7)[0]]
+        pieces = [np.zeros(8, np.float32), self.pieces(5)[0], np.zeros(9, np.float32), self.pieces(7)[0]]
         with contextlib.redirect_stdout(io.StringIO()) as out:
             be, text, paras, calls = self.run_wav(1, pieces)
         with contextlib.redirect_stdout(io.StringIO()):
             be2, text2, paras2, calls2 = self.run_wav(2, pieces)
-        self.assertEqual([p["offset"] for p in paras], [0.0, 60.0])
-        self.assertEqual(text.split("\n\n"), [f"[00:00:00] {paras[0]['text']}", f"[00:01:00] {paras[1]['text']}"])
+        self.assertEqual([p["offset"] for p in paras], [20.0, 60.0])
+        self.assertEqual(text.split("\n\n"), [f"[00:00:20] {paras[0]['text']}", f"[00:01:00] {paras[1]['text']}"])
         self.assertEqual((text, paras), (text2, paras2))
         self.assertEqual(calls, [(1, 4), (2, 4), (3, 4), (4, 4)])
         self.assertTrue(any("cands" in w for p in paras for w in p["words"]))
         self.assertEqual(be.model.encodes, 2)  # the silent pieces were never encoded; the others reused their cache
         self.assertEqual(be2.model.encodes, 2)
         self.assertEqual(out.getvalue().count("[note]"), 1)  # one note per recording, not one per piece
-        self.assertIn("(2 pieces below", out.getvalue())
+        self.assertIn("(2 pieces quieter than", out.getvalue())
 
 
 def tk(text, p=1.0):

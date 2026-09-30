@@ -6,7 +6,7 @@
 
 Uses the same pipeline as the command line tool: PyAV decoding, the shared 20-second chunker, the
 selected backend. All pieces of all clips go through the backend together (like a long recording
-would), so batching behaves as in real use; pieces with no sound at all are skipped as in real use
+would), so batching behaves as in real use; silent pieces (config.SILENCE_DBFS) are skipped as in real use
 (--no-silence-gate sends them too, for an A/B run). Prints one RESULT line.
 """
 import argparse
@@ -105,7 +105,7 @@ def main(argv=None):
     ap.add_argument("--json", help="write the result as JSON to this file")
     ap.add_argument("--hyp-csv", help="write hypotheses next to references to this CSV")
     ap.add_argument("--no-silence-gate", action="store_true",
-                    help="send every piece to the model, also pieces with no sound at all (for an A/B run)")
+                    help="send every piece to the model, also silent pieces (for an A/B run)")
     args = ap.parse_args(argv)
     try:
         run(args)

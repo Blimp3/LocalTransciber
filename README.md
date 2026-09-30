@@ -132,10 +132,10 @@ A transcript can take an hour to make and longer to correct, so the program neve
   old transcript is not touched. Tip: close the transcript in your editor before you transcribe the same recording
   again or save from the review page.
 - **If the model returns no text at all**, nothing is written: the program says that no speech was recognised and
-  leaves any existing transcript alone. A piece of the recording (about 20 s) with no sound at all, such as digital
-  silence, is not sent to the speech model, which would only invent a phrase there ("Grazie a tutti."); the program
-  says how many seconds it skipped. A pause with background noise still reaches the model, which can still invent a
-  short phrase there.
+  leaves any existing transcript alone. A silent piece of the recording (about 20 s, with no tenth of a second louder
+  than -60 dBFS, such as digital silence) is not sent to the speech model, which would only invent a phrase there
+  ("Grazie a tutti."); the program says how many seconds it left out as silence. A pause with background noise still
+  reaches the model, which can still invent a short phrase there.
 - **The review page** keeps a `.bak` copy of the file on disk if it changed after the page was opened (a new
   transcription, a second browser tab) before it saves your version. If saving fails, your edits stay on the page
   and it says why.
@@ -277,8 +277,7 @@ then `PYTHONPATH=. .venv/bin/python -m localtranscribe file.m4a`.
 
 The review page and the AI suggestions are done, measured on clips they were not tuned on, and offered from the
 double-click launcher. Next: measure on real calls and lectures, reach more mistakes with fewer false alarms, and
-evaluate trimming pauses inside pieces (pieces with no sound at all are already skipped). Details in
-[ROADMAP.md](ROADMAP.md).
+evaluate trimming pauses inside pieces (silent pieces are already skipped). Details in [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 
@@ -315,8 +314,9 @@ Exe sha256 `913dcf5362f71805db9faf02885aaad1d3d34ba924714cae5bf404515b3bc219`: r
   model (`setup_windows.bat light`), or move the model cache with the `HF_HOME` environment variable.
 - **The NVIDIA card is not used**: run `check_hardware.bat`; it says whether the card is too old for the GPU build of
   PyTorch or the driver must be updated from nvidia.com/drivers. Then run the setup again.
-- **"no speech was recognised"**: the model returned no text (for example a recording without speech). Nothing is
-  written and an existing transcript is left alone.
+- **"no speech was recognised"**: the recording is silent or the model heard no speech. Nothing is written and an
+  existing transcript is left alone. A "[note] ... left out as silence" line means pieces of about 20 s were quieter
+  than -60 dBFS and never reached the model: if you can hear speech there, make the file louder and run it again.
 - **"could not read audio (no audio track found)"**: the file has no sound track, for example a silent video.
 - **"could not replace ... The transcript was saved as ..."**: the `.md` is open in another program (on Windows,
   Word locks it). The new transcript is in `<recording>.new-<date>.md`; close the other program and keep the file

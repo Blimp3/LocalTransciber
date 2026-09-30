@@ -15,6 +15,8 @@ CHUNK_SECONDS = 20
 # and on such a piece every model invents a phrase ("Non è vero.", "Grazie a tutti."). Measured without a model on 20 s
 # pieces: the quietest of 1,930 speech pieces (FLEURS 300, 1,177 VoxPopuli clips, 12 speeches also after G.711 and
 # Opus 12 kbit/s) reaches -30 dBFS; digital silence after those codecs stays at -81 / -100 dBFS. None sends every piece.
+# Do not raise it to catch pauses with room noise (about -42 dBFS in VoxPopuli, close to quiet speech): that needs
+# voice activity detection (ROADMAP).
 SILENCE_DBFS = -60
 
 # Tokens the model may generate for one piece (a 20-25 s piece needs ~100-150).

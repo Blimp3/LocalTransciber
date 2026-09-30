@@ -157,6 +157,9 @@ class SilenceGateTests(unittest.TestCase):
         piece = np.zeros(SR * 20, np.float32)
         piece[12345:12345 + SR // 10] = square(-50, SR // 10)  # one quiet word of 100 ms, not on a frame boundary
         self.assertFalse(textutil.is_silent(piece, SR, -60))
+        click = np.zeros(SR * 2, np.float32)
+        click[100] = 0.02  # peak -34 dBFS, but -66 dBFS over its 100 ms: a click in digital silence is not sound
+        self.assertTrue(textutil.is_silent(click, SR, -60))
 
     def test_silent_pieces_never_reach_the_backend(self):
         pieces = [noisy_speechlike(3), np.zeros(SR * 20, np.float32), noisy_speechlike(4),
@@ -178,6 +181,18 @@ class SilenceGateTests(unittest.TestCase):
         self.assertEqual(texts, ["3.0s", "20.0s", "4.0s", "10.0s"])
         self.assertEqual(skipped, [])
 
+    def test_several_slices_with_silent_pieces_in_later_ones(self):
+        sp, si = noisy_speechlike(1), np.zeros(SR, np.float32)
+        pieces = [sp] * 8 + [si, sp, si, si, si, si, si, si] + [si] * 2  # step is 8: slices of 8, 8 and 2
+        fake, skipped, seen, parts = FakeBackend(), [], [], []
+        texts = pipeline.transcribe_pieces(fake, pieces, "Italian", progress=lambda d, t: seen.append((d, t)),
+                                           partial=lambda t: parts.append(len(t)), skipped=skipped)
+        self.assertEqual(texts, ["1.0s"] * 8 + ["", "1.0s"] + [""] * 8)
+        self.assertEqual(skipped, [1.0] * 9)
+        self.assertEqual(seen, [(8, 18), (16, 18), (18, 18)])
+        self.assertEqual(parts, [8, 16, 18])
+        self.assertEqual([c[0] for c in fake.calls], [8, 1])
+
     def test_transcribe_wav_keeps_offsets_and_says_what_it_skipped(self):
         import contextlib
         import io
@@ -187,8 +202,11 @@ class SilenceGateTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()) as out:
             text = pipeline.transcribe_wav(FakeBackend(), None, "Italian")
         self.assertEqual(text, "[00:00:00] 20.0s\n\n[00:00:40] 20.0s")
-        self.assertEqual(out.getvalue(), "  [note] 20 s had no sound at all (1 piece below -60 dBFS) and were not "
-                                         "transcribed.\n")
+        self.assertEqual(out.getvalue(), "  [note] 20 s left out as silence (1 piece quieter than -60 dBFS). If you "
+                                         "can hear speech there, make the recording louder and run it again.\n")
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            pipeline.say_skipped([])
+        self.assertEqual(out.getvalue(), "")  # nothing skipped, no note
 
     def test_turns_skip_a_silent_run(self):
         import contextlib

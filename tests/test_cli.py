@@ -136,7 +136,7 @@ class CliTest(unittest.TestCase):
             code = cli.main([wav, "--device", "cpu", "--model", "light", "--batch-size", "1"])
         self.assertEqual((code, calls), (1, []))
         self.assertEqual(sorted(os.listdir(self.d)), ["a.wav"])
-        self.assertIn("30 s had no sound at all", out.getvalue())
+        self.assertIn("30 s left out as silence", out.getvalue())
         self.assertIn("no speech was recognised", out.getvalue())
 
     def test_sidecar_written_with_confidence(self):

@@ -61,8 +61,9 @@ def say_skipped(skipped):
     """One note for the pieces transcribe_pieces left out as silence."""
     if skipped:
         n = len(skipped)
-        print(f"  [note] {sum(skipped):.0f} s had no sound at all ({n} piece{'s' if n > 1 else ''} below "
-              f"{config.SILENCE_DBFS} dBFS) and were not transcribed.")
+        print(f"  [note] {sum(skipped):.0f} s left out as silence ({n} piece{'s' if n > 1 else ''} quieter than "
+              f"{config.SILENCE_DBFS} dBFS). If you can hear speech there, make the recording louder and run it "
+              "again.")
 
 
 def add_candidates(backend, piece, language, context, para):
