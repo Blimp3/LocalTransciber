@@ -277,7 +277,7 @@ then `PYTHONPATH=. .venv/bin/python -m localtranscribe file.m4a`.
 
 The review page and the AI suggestions are done, measured on clips they were not tuned on, and offered from the
 double-click launcher; silent pieces are skipped. Next: measure on real calls and lectures, reach more mistakes with
-fewer false alarms, and measure a short lead-in before each piece. Details in [ROADMAP.md](ROADMAP.md).
+fewer false alarms. Details in [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 

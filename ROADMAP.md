@@ -48,7 +48,10 @@ review and correction on top without changing how it is used.
   many seconds it left out as silence. Checked without a model on 1,930 speech pieces (FLEURS, VoxPopuli, also after
   phone and Opus codecs): the quietest is 30 dB above the limit. Measured on 12 speeches with 2-15 s pauses inserted:
   the gate removes exactly the invented words of the silent pieces and changes nothing else, for every model tested
-  (Qwen3-ASR 1.7B: word error rate 7.2 % to 6.7 %); every other test set is unchanged.
+  (Qwen3-ASR 1.7B: word error rate 7.2 % to 6.7 %); every other test set is unchanged. Also measured and not
+  adopted: 0.5 s or 1 s of silence in front of every piece, meant to save the first words of a piece that starts
+  right on speech. On 1,177 VoxPopuli clips it recovers about as many first words as it loses and shifts the
+  decoding of the rest (word error rate 17.1 % to 17.3 %); on FLEURS it changes nothing.
 
 ## Next: better suggestions
 
@@ -63,8 +66,6 @@ review and correction on top without changing how it is used.
 
 - **Whisper as an alternative backend**, A/B-tested against Qwen3-ASR on real phone calls and lecture recordings
   rather than only on FLEURS read speech. The backend interface already allows it.
-- **A short lead-in before each piece.** A piece that starts right on speech can lose its first words; 0.5-1 s of
-  silence in front of every piece is being measured on 1,177 VoxPopuli clips and on FLEURS.
 - **Trimming long silences inside pieces.** On the 12 speeches with inserted pauses, 94 % of the pause time lies
   inside pieces that also hold speech. After the silence gate, Qwen3-ASR reads through those pauses without
   inventing words (what looked like invented text at file starts turned out to be real speech that the reference
