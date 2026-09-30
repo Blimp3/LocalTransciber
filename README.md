@@ -172,6 +172,13 @@ How the default is chosen (the hardware check and `--model auto` follow the same
   (2.9 % WER, 2.3x, 3.3 GB) is available with `--model mlx-community/Qwen3-ASR-1.7B-8bit`.
 - **CPU only:** always *light*.
 
+**Experimental: Whisper on the Mac.** `--model mlx-community/whisper-large-v3-turbo-asr-4bit` runs OpenAI's Whisper
+large-v3-turbo through the same pipeline (download it once with `.venv/bin/python -m localtranscribe.setup_models
+--model mlx-community/whisper-large-v3-turbo-asr-4bit`). On 300 FLEURS clips it made slightly fewer mistakes than
+*best* (3.3 % against 3.7 % WER) at 10.8x real time and 1.1 GB of memory; most of that difference is how numbers are
+written (Whisper writes digits, as the reference texts do). It has no `--confidence` or `--correct`, and the comparison
+on real calls and lectures is not finished, so Qwen3-ASR stays the default.
+
 ## Accuracy and speed
 
 Word error rate (WER, lower is better; case and punctuation ignored) on the FLEURS Italian test set: 100 read
@@ -264,8 +271,8 @@ requirements-windows.txt` (NVIDIA) or `-r requirements-cpu.txt`, then `PYTHONPAT
 ## Roadmap
 
 The review page and the AI suggestions are done, measured on clips they were not tuned on, and offered from the
-double-click launcher. Next: measure on real calls and lectures, reach more mistakes with fewer false alarms, and
-skip silent stretches before they reach the model. Details in [ROADMAP.md](ROADMAP.md).
+double-click launcher. Next: measure on real calls and lectures, reach more mistakes with fewer false alarms, finish
+the Whisper comparison, and skip silent stretches before they reach the model. Details in [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 
@@ -342,6 +349,7 @@ What it downloads and uses:
 | Qwen3-ASR models (`Qwen/Qwen3-ASR-1.7B`, `-0.6B`) and the `qwen-asr` package | Apache-2.0 |
 | MLX conversions (`mlx-community/Qwen3-ASR-...`) | Apache-2.0 (as the originals) |
 | Correction model `mlx-community/Qwen3-0.6B-4bit` (used by `--correct`; a conversion of `Qwen/Qwen3-0.6B`) | Apache-2.0 |
+| Whisper large-v3-turbo (`mlx-community/whisper-large-v3-turbo-asr-...`; optional, downloaded only if you ask for it) | MIT (OpenAI's model; the conversion's page states no separate license) |
 | MLX, `mlx-audio`, `mlx-lm` | MIT |
 | Silero VAD | MIT |
 | WavLM speaker model `microsoft/wavlm-base-plus-sv` (used by `--speakers`) | The model card points to the license of Microsoft's UniSpeech repository (CC BY-SA 3.0); the WavLM code (microsoft/unilm) is MIT. The weights are not included here; setup downloads them from Hugging Face. |
@@ -353,8 +361,8 @@ What it downloads and uses:
 ## Acknowledgements
 
 The Qwen team for Qwen3-ASR and the `qwen-asr` reference implementation; the MLX and `mlx-audio` maintainers and the
-`mlx-community` for the Apple Silicon conversions; Silero for the VAD; Microsoft for WavLM; HigherOrderCO for
-Bend; Google for FLEURS.
+`mlx-community` for the Apple Silicon conversions; Silero for the VAD; Microsoft for WavLM; OpenAI for Whisper;
+HigherOrderCO for Bend; Google for FLEURS.
 
 ---
 

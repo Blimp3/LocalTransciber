@@ -52,10 +52,12 @@ review and correction on top without changing how it is used.
 
 ## Under evaluation
 
-- **Whisper as an alternative backend**, A/B-tested against Qwen3-ASR on real phone calls and lecture recordings
-  rather than only on FLEURS read speech. The backend interface already allows it.
+- **Whisper as an alternative backend.** A first Mac backend exists (`--model
+  mlx-community/whisper-large-v3-turbo-asr-4bit`, experimental): on 300 FLEURS clips 3.3 % WER against 3.7 % for
+  Qwen3-ASR 1.7B 4-bit, faster and with less memory, but without word confidence or suggestions. The comparison on
+  real phone calls and lecture recordings is still running.
 - **Skipping silence before chunking**, to cut hallucinations and speed things up: both models invent a short phrase
-  on a piece that is only silence.
+  on a piece that is only silence ("Non è vero.", "Grazie a tutti.").
 - **Optional speech enhancement (denoising) before transcription**, enabled only where measurements show it helps
   (very noisy recordings); on clean audio it tends to hurt.
 
