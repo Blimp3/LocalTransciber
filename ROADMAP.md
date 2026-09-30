@@ -65,6 +65,10 @@ review and correction on top without changing how it is used.
   pieces with no sound at all: on a test set with 2-15 s pauses inserted into 12 speeches, 94 % of the pause time lies
   inside pieces that also hold speech, and a real room is louder than the limit (VoxPopuli's background is around
   -42 dBFS), so those pauses still reach the model.
+- **Parakeet as a small, fast candidate.** NVIDIA's Parakeet TDT 0.6B v3 (CC-BY-4.0) covers 25 European languages
+  including Italian (NVIDIA reports 3.0 % WER on FLEURS Italian), and the MLX library this program already uses on
+  the Mac can run it, also in a much smaller ternary version. To be tested on the Mac against Qwen3-ASR and Whisper
+  on the same clips. The English-only Phonon models built from it cannot be used for Italian.
 - **Optional speech enhancement (denoising) before transcription**, enabled only where measurements show it helps
   (very noisy recordings); on clean audio it tends to hurt.
 
