@@ -81,6 +81,7 @@ class MlxQwenBackend(Backend):
         self.record_confidence = record_confidence
         self.last_records = []  # with record_confidence: one {"aligned", "tokens"} per text of the last transcribe()
         self._recs = []
+        self._kept = None  # KV cache etc. of the last recorded piece, for word_continuations (see _single_recorded)
         self.dtype = next((t for t in ("4bit", "5bit", "6bit", "8bit", "bf16", "fp16") if t in repo.lower()), "mlx")
         self.notes = []
 
@@ -103,6 +104,7 @@ class MlxQwenBackend(Backend):
     def transcribe(self, pieces: List[np.ndarray], language: Optional[str], context: str = "") -> List[str]:
         out = [""] * len(pieces)
         self.last_records = [None] * len(pieces)
+        self._kept = None
         order = list(range(len(pieces)))
         step = self.batch_size  # fixed for this call: a fallback inside _run_group may lower self.batch_size
         if step > 1:
@@ -145,15 +147,54 @@ class MlxQwenBackend(Backend):
         )
         return detect_and_fix_repetitions((res.text or "").strip())
 
+    @staticmethod
+    def _key(piece, language, context):
+        return len(piece), hash(piece.tobytes()), language, context or ""
+
     def _single_recorded(self, piece, language, context):
-        """Like generate() for one piece (see _generate_single_chunk), with the recording sampler."""
-        rec = _Recorder(self.mx)
-        ids = [int(t) for t, _ in self.model.stream_generate(
-            piece, max_tokens=config.MAX_NEW_TOKENS, sampler=rec, language=language, system_prompt=context or None)]
-        text = self.model._tokenizer.decode(ids, skip_special_tokens=True)
+        """Like generate() for one piece: mlx-audio 0.5.7's stream_generate + generate_step copied step for step
+        (prefill in chunks, all but the last prompt position first; greedy pick with one step of lookahead; stop at
+        EOS or max_tokens), with the recording sampler. Same tokens as stream_generate. The KV cache stays in
+        self._kept so that word_continuations can reuse it instead of encoding the audio and prefilling again."""
+        mx, m = self.mx, getattr(self.model, "_model", self.model)
+        self._kept = None
+        feats, mask, n_audio = m._preprocess_audio(piece)
+        ids = m._build_prompt(n_audio, language, context or None)
+        audio = m.get_audio_features(feats, mask)
+        mx.eval(audio)
+        del feats, mask
+        mx.clear_cache()
+        embeds = m._build_inputs_embeds(ids, audio)
+        mx.eval(embeds)
+        del audio
+        mx.clear_cache()
+        embeds = embeds[0]
+        n_prompt, cache, eos, rec = len(embeds), m.make_cache(), m._eos_token_ids(), _Recorder(mx)
+        for i in range(0, n_prompt - 1, 2048):
+            m._forward_with_embeds(embeds[i:min(i + 2048, n_prompt - 1)][None], cache=cache)
+            mx.eval([c.state for c in cache])
+            mx.clear_cache()
+
+        def step(x):  # embeddings (1, T, H) -> the next token, sampled from the log-probs of the last position
+            lp = m._forward_with_embeds(x, cache=cache)[:, -1, :]
+            return rec(lp - mx.logsumexp(lp, axis=-1, keepdims=True))
+
+        tok, got = step(embeds[-1:][None]), []
+        for count in range(config.MAX_NEW_TOKENS):
+            nxt = step(m.model.embed_tokens(tok[None]))
+            mx.async_eval(nxt)
+            t = int(tok.item())
+            if t in eos:
+                break
+            got.append(t)
+            if count % 256 == 0:
+                mx.clear_cache()
+            tok = nxt
+        text = self.model._tokenizer.decode(got, skip_special_tokens=True)
         if language is None:
             _lang, text = self.model.extract_language(text)
-        self._recs.append(rec.rows([len(ids)])[0])
+        self._recs.append(rec.rows([len(got)])[0])
+        self._kept = {"key": self._key(piece, language, context), "cache": cache, "n_prompt": n_prompt, "ids": got}
         return detect_and_fix_repetitions((text or "").strip())
 
     def _batched(self, group, language, context):
@@ -195,33 +236,50 @@ class MlxQwenBackend(Backend):
         tokens (and their probabilities) the model writes after prompt + prefix + [alt], up to the next word (a token
         starting with whitespace), EOS or max_steps; `stop` is that ending token's id. None when max_steps ran out
         (the word is incomplete).
-        The prompt and the prefixes are fed to one KV cache once; after each alt the cache is trimmed back."""
-        # ponytail: re-encodes the audio and re-prefills the prompt once per piece (--confidence ~1.6x the time on
-        # 100 FLEURS clips; batching the alts saved only ~5%). Reusing the transcription's own cache would remove it.
+        If the piece is the one _single_recorded just decoded, its KV cache is reused: the prefix is the first tokens
+        it generated, so the requests go from the longest prefix to the shortest, trimming the cache back to
+        prompt + prefix each time (no audio encoding, no prefill, no prefix feed). Otherwise the prompt and the
+        prefixes are fed to a new cache. After each alt the cache is trimmed back to prompt + prefix."""
+        # Measured on 30 FLEURS clips (--confidence 59 s vs 40 s plain): encoding the audio + prefilling the prompt
+        # cost 12.8 s, feeding the prefixes 4.0 s, forcing the alts 3.6 s; reusing the cache removes the first two.
+        # On 100 clips, paired runs: --confidence 1.5-1.9x the plain time before, 1.1-1.4x after.
         mx, m = self.mx, getattr(self.model, "_model", self.model)
-        feats, mask, n_audio = m._preprocess_audio(float_range_normalize(piece))
-        ids = m._build_prompt(n_audio, language, context or None)
-        embeds = m._build_inputs_embeds(ids, m.get_audio_features(feats, mask))[0]
-        del feats, mask
-        cache, eos = m.make_cache(), m._eos_token_ids()
+        kept, self._kept = self._kept, None
+        reuse = (kept is not None and kept["key"] == self._key(float_range_normalize(piece), language, context)
+                 and all(list(p) == kept["ids"][:len(p)] for p, _ in requests))
+        if reuse:
+            cache, n_prompt = kept["cache"], kept["n_prompt"]
+            order = sorted(range(len(requests)), key=lambda r: -len(requests[r][0]))
+        else:
+            feats, mask, n_audio = m._preprocess_audio(float_range_normalize(piece))
+            ids = m._build_prompt(n_audio, language, context or None)
+            embeds = m._build_inputs_embeds(ids, m.get_audio_features(feats, mask))[0]
+            del feats, mask
+            cache = m.make_cache()
+            m._forward_with_embeds(embeds[None], cache=cache)
+            mx.eval([x for c in cache for x in c.state])
+            n_prompt = cache[0].offset
+            order = sorted(range(len(requests)), key=lambda r: len(requests[r][0]))
+        eos = m._eos_token_ids()
 
         def feed(tokens):  # -> logits of the last position
             return m._forward_with_embeds(m.model.embed_tokens(mx.array([tokens])), cache=cache)[0, -1]
 
-        m._forward_with_embeds(embeds[None], cache=cache)
-        mx.eval([x for c in cache for x in c.state])
-        n_prompt = base = cache[0].offset
-        fed = []  # prefix tokens currently in the cache after the prompt
+        fed = []  # new cache: prefix tokens currently in the cache after the prompt
         out = [None] * len(requests)
-        for r in sorted(range(len(requests)), key=lambda r: len(requests[r][0])):
+        for r in order:
             prefix, alts = list(requests[r][0]), requests[r][1]
-            if prefix[:len(fed)] != fed:  # not a longer prefix of the previous one: start again from the prompt
+            if reuse:
                 for c in cache:
-                    c.trim(c.offset - n_prompt)
-                fed = []
-            if len(prefix) > len(fed):
-                feed(prefix[len(fed):])
-                fed = prefix
+                    c.trim(c.offset - n_prompt - len(prefix))
+            else:
+                if prefix[:len(fed)] != fed:  # not a longer prefix of the previous one: start again from the prompt
+                    for c in cache:
+                        c.trim(c.offset - n_prompt)
+                    fed = []
+                if len(prefix) > len(fed):
+                    feed(prefix[len(fed):])
+                    fed = prefix
             base = cache[0].offset
             row = []
             for alt in alts:
@@ -269,6 +327,6 @@ class MlxQwenBackend(Backend):
     def close(self):
         import gc
 
-        self.model = None
+        self.model = self._kept = None
         gc.collect()
         self.mx.clear_cache()

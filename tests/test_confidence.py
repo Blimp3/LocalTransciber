@@ -4,6 +4,7 @@ mlx is replaced by numpy (same function names for what the recorder uses) and th
 runs anywhere. The real model is checked by comparing transcripts with and without recording (see the session notes)."""
 import os
 import sys
+import types
 import unittest
 from unittest import mock
 
@@ -27,21 +28,73 @@ class _Tok:
         return "".join(chr(97 + i) for i in ids if not (skip_special_tokens and i == EOS))
 
 
+class _Cache:
+    """KV cache stand-in: remembers the fed tokens; `trim_log` (shared) gets the offset each trim leaves."""
+
+    state = ()
+
+    def __init__(self, trim_log):
+        self.toks, self.trim_log = [], trim_log
+
+    @property
+    def offset(self):
+        return len(self.toks)
+
+    def trim(self, n):
+        assert n >= 0, "a cache can only be trimmed back"
+        del self.toks[len(self.toks) - min(n, len(self.toks)):]
+        self.trim_log.append(len(self.toks))
+
+
+KEY = 1000  # the toy prompt ends with KEY + the piece length: how the toy model finds its script
+
+
 class ScriptedModel(FakeQwenModel):
-    """Token script per piece length; calls the sampler like mlx-audio does (plus one step of lookahead)."""
+    """Token script per piece length, served through the same private API mlx-audio 0.5.7 has (prompt, embeddings,
+    KV cache, forward): after the prompt it writes its script then EOS; after anything else it writes EOS if
+    the sum of the tokens so far is even, else that sum % 7: every continuation depends on the whole cache."""
 
     def __init__(self, scripts, fail_after_sampling=False):
         super().__init__()
         self.scripts, self._tokenizer, self.fail_after_sampling = scripts, _Tok(), fail_after_sampling
+        self.model = types.SimpleNamespace(embed_tokens=lambda x: x)
+        self.encodes, self.feeds, self.trim_log = 0, [], []  # feeds: (new positions, cache offset before)
 
-    def stream_generate(self, audio, *, max_tokens, sampler, language=None, system_prompt=None, **kw):
-        script = self.scripts[len(audio)] + [EOS]
-        for j in range(len(script) + 1):
-            tok = sampler(logits_for(script[min(j, len(script) - 1)])[None, :])
-            if j < len(script):
-                if script[j] == EOS:
-                    return
-                yield int(tok[0]), None
+    def _preprocess_audio(self, audio):
+        self.encodes += 1
+        return audio, None, 3
+
+    def _build_prompt(self, n_audio, language, system_prompt):
+        return np.array([[100, 101, 102]])
+
+    def get_audio_features(self, feats, mask):
+        return feats
+
+    def _build_inputs_embeds(self, ids, feats):
+        return np.concatenate([ids, [[KEY + len(feats)]]], axis=1)
+
+    def make_cache(self):
+        return [_Cache(self.trim_log), _Cache(self.trim_log)]
+
+    def _eos_token_ids(self):
+        return {EOS}
+
+    def _next(self, seq):
+        key = next((x - KEY for x in seq if x >= KEY), None)
+        if key is None:
+            return 0
+        gen, script = [x for x in seq if x < V], self.scripts[key] + [EOS]
+        return script[len(gen)] if gen == script[:len(gen)] and len(gen) < len(script) else EOS if sum(gen) % 2 == 0 else sum(gen) % 7
+
+    def _forward_with_embeds(self, embeds, cache=None):
+        seq, out = list(cache[0].toks), []
+        self.feeds.append((embeds.shape[1], len(seq)))
+        for x in embeds[0]:
+            seq.append(int(x))
+            out.append(logits_for(self._next(seq)))
+        for c in cache:
+            c.toks = list(seq)
+        return np.array([out])
 
     def _generate_chunks_batched(self, chunks, *, sampler, **kw):
         self.batched_calls.append([len(c[0]) for c in chunks])
@@ -56,10 +109,10 @@ class ScriptedModel(FakeQwenModel):
 
 
 def patch_numpy_as_mx(core):
-    for name in ("argmax", "argpartition", "argsort", "take_along_axis", "exp", "stack"):
+    for name in ("argmax", "argpartition", "argsort", "take_along_axis", "exp", "stack", "array"):
         setattr(core, name, getattr(np, name))
-    core.async_eval = lambda *a: None
-    core.logsumexp = lambda x, axis, keepdims=False: np.log(np.exp(x).sum(axis=axis, keepdims=keepdims))
+    core.async_eval = core.eval = lambda *a: None
+    core.logsumexp = lambda x, axis=None, keepdims=False: np.log(np.exp(x).sum(axis=axis, keepdims=keepdims))
 
 
 class ConfidenceTests(unittest.TestCase):
@@ -161,6 +214,81 @@ class ConfidenceTests(unittest.TestCase):
         self.assertFalse(records[0]["aligned"])
 
 
+class CacheReuseTests(unittest.TestCase):
+    """word_continuations reuses the KV cache of the piece _single_recorded just decoded."""
+
+    SCRIPT = [0, 1, 2, 3]
+
+    def make(self, batch=1):
+        return ConfidenceTests.make(self, batch, {5: self.SCRIPT, 6: [4, 5], 7: [2, 3, 1]})
+
+    pieces = ConfidenceTests.pieces
+
+    def test_reuse_gives_the_same_continuations_as_a_fresh_cache(self):
+        be, (piece,) = self.make(), self.pieces(5)
+        self.assertEqual(be.transcribe([piece], "Italian"), ["abcd"])
+        n = self.model.encodes
+        reqs = [([0], [2, 4]), ([0, 1, 2], [5, 6]), ([], [3]), ([0, 1], [4, 1])]
+        self.model.feeds.clear()
+        del self.model.trim_log[:]
+        got = be.word_continuations(piece, "Italian", "", reqs)
+        self.assertEqual(self.model.encodes, n)  # the audio is not encoded again
+        self.assertTrue(all(new == 1 for new, _ in self.model.feeds))  # no prompt prefill, no prefix feed
+        # longest prefix first: 4 prompt tokens + prefix length, going down (the trim after each alt keeps the level)
+        self.assertEqual(sorted(set(self.model.trim_log), reverse=True), [7, 6, 5, 4])
+        self.assertEqual(self.model.trim_log, sorted(self.model.trim_log, reverse=True))
+        self.assertIsNone(be._kept)  # used up
+        want = be.word_continuations(piece, "Italian", "", reqs)  # nothing kept any more: the fresh path
+        self.assertEqual(self.model.encodes, n + 1)
+        self.assertEqual(got, want)
+        self.assertTrue(any(c and c[0] for row in got for c in row))  # real continuations, not all empty
+
+    def test_another_piece_or_prefix_falls_back(self):
+        be, (a, b) = self.make(), self.pieces(5, 6)
+        be.transcribe([a], "Italian")
+        n = self.model.encodes
+        fresh = be.word_continuations(b, "Italian", "", [([4], [2])])
+        self.assertEqual(self.model.encodes, n + 1)  # the kept cache belongs to `a`
+        be.transcribe([a], "Italian")
+        n = self.model.encodes
+        be.word_continuations(a, "Italian", "", [([0, 9], [2])])  # a prefix the piece did not generate
+        self.assertEqual(self.model.encodes, n + 1)
+        be.transcribe([a], "Italian")
+        be.word_continuations(a, "Italian", "ctx", [([0], [2])])  # another prompt
+        self.assertEqual(self.model.encodes, n + 3)
+        self.assertEqual(fresh, self.make().word_continuations(b, "Italian", "", [([4], [2])]))
+
+    def test_the_kept_cache_is_dropped_by_the_next_transcribe(self):
+        be, (a, b) = self.make(batch=2), self.pieces(5, 6)
+        be.transcribe([a], "Italian")  # one piece: the recorded single path keeps its cache
+        self.assertIsNotNone(be._kept)
+        be.transcribe([a, b], "Italian")  # the batched path keeps nothing, and must not leave the old cache
+        self.assertIsNone(be._kept)
+
+    def run_wav(self, batch):
+        """transcribe_wav over 3 pieces; batch 1 = one piece at a time (cache reuse), batch 2 = the old order."""
+        from localtranscribe import pipeline
+
+        be, calls = self.make(batch), []
+        pieces = self.pieces(5, 6, 7)
+        paragraphs = []
+        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(p, 20.0 * i) for i, p in enumerate(pieces)]):
+            text = pipeline.transcribe_wav(be, None, "Italian", paragraphs=paragraphs,
+                                           progress=lambda d, t: calls.append((d, t)))
+        return be, text, paragraphs, calls
+
+    def test_per_piece_pipeline_gives_the_same_text_and_records_as_the_batched_one(self):
+        be, text, paras, calls = self.run_wav(1)
+        be2, text2, paras2, calls2 = self.run_wav(2)
+        self.assertEqual(text, text2)
+        self.assertEqual(paras, paras2)
+        self.assertEqual(calls, [(1, 3), (2, 3), (3, 3)])
+        self.assertEqual(calls2[-1], (3, 3))
+        self.assertTrue(any("cands" in w for p in paras for w in p["words"]))  # the comparison is not vacuous
+        self.assertEqual(be.model.encodes, 3)  # the audio was encoded once per piece, for the transcription only
+        self.assertEqual(be2.model.encodes, 3)  # batched decoding never encodes here: 3 fresh caches, one per piece
+
+
 def tk(text, p=1.0):
     return {"text": text, "p": p, "alts": []}
 
@@ -242,7 +370,8 @@ class CandidatesTests(unittest.TestCase):
                 return ["accomunano dino ok"]
 
             def decode(self, ids):
-                return {20: "mi", 21: "ni", 22: " x"}[ids[0]]
+                texts = {t["id"]: t["text"] for t in toks} | {a[0]: a[1] for t in toks for a in t["alts"]}
+                return "".join((texts | {20: "mi", 21: "ni", 22: " x"})[i] for i in ids)
 
         if has_method:
             def wc(self, piece, language, context, requests):
@@ -269,10 +398,10 @@ class CandidatesTests(unittest.TestCase):
 
     def test_candidates_composed_deduped_sorted(self):
         words, _ = self.run_wav()
-        # accomimi: p .3*.5, duplicate (.02*.9) dropped; acconini .1*.5; accomu = alt p only;
+        # (times .99, the unchanged first piece) accomimi: p .3*.5, duplicate (.02*.9) dropped; acconini .1*.5; accomu = alt p only;
         # incomplete (None) and whitespace ("qq x") dropped
-        self.assertEqual(words[0]["cands"], [{"w": "accomimi", "p": 0.15}, {"w": "acconini", "p": 0.05},
-                                             {"w": "accomu", "p": 0.05}])
+        self.assertEqual(words[0]["cands"], [{"w": "accomimi", "p": 0.1485}, {"w": "acconini", "p": 0.0495},
+                                             {"w": "accomu", "p": 0.0495}])
         # " dino" is unchanged and " " is empty: both dropped
         self.assertEqual(words[1]["cands"], [{"w": "dine", "p": 0.1}])
         self.assertNotIn("cands", words[2])
@@ -296,6 +425,63 @@ class CandidatesTests(unittest.TestCase):
         words, _ = self.run_wav(has_method=False)
         self.assertTrue(words[0]["unsure"])
         self.assertTrue(all("cands" not in w for w in words))
+
+    def test_half_a_letter_is_not_a_candidate(self):
+        paras, _, _ = self.run_simple([0.7, 0.6], alt_text="\ufffd")  # a byte piece decoded alone
+        self.assertNotIn("cands", paras[0]["words"][0])
+
+    def run_simple(self, ptoks, cont_p=1.0, boom=False, npieces=1, alt_text="z"):
+        """Word of len(ptoks) pieces (last has alternative 60, p .4); returns (paragraphs, texts, calls)."""
+        from localtranscribe import pipeline
+
+        toks = [{"id": 10 + i, "text": (" a" if i == 0 else "b"), "p": p,
+                 "alts": [[60, "z" if i else " z", 0.4]] if i in (0, len(ptoks) - 1) else []}
+                for i, p in enumerate(ptoks)]
+        calls = []
+
+        class Stub:
+            batch_size = 1
+            eos_ids = {7}
+
+            def transcribe(self, pieces, language, context=""):
+                self.last_records = [{"aligned": True, "tokens": toks} for _ in pieces]
+                return ["a" + "b" * (len(ptoks) - 1)] * len(pieces)
+
+            def decode(self, ids):
+                return "".join({t["id"]: t["text"] for t in toks}.get(i, alt_text) for i in ids)
+
+            def word_continuations(self, piece, language, context, requests):
+                calls.append(requests)
+                if boom:
+                    raise RuntimeError("kaboom")
+                return [[([], [cont_p], 7) for _ in alts] for _, alts in requests]
+
+        paragraphs = []
+        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.zeros(1), float(i)) for i in range(npieces)]):
+            text = pipeline.transcribe_wav(Stub(), None, "Italian", paragraphs=paragraphs)
+        return paragraphs, text, calls
+
+    def test_candidate_p_includes_the_unchanged_prefix_pieces(self):
+        paras, _, _ = self.run_simple([0.7, 0.7, 0.7, 0.6])
+        self.assertEqual(paras[0]["words"][0]["cands"][0]["p"], round(0.4 * 0.7 ** 3, 5))
+        # swap of the first piece: no prefix
+        paras, _, _ = self.run_simple([0.3, 0.9, 0.9])
+        self.assertEqual(paras[0]["words"][0]["cands"][0]["p"], 0.4)
+
+    def test_failing_word_continuations_keeps_the_transcript(self):
+        import contextlib
+        import io
+
+        _, want, _ = self.run_simple([0.7, 0.7, 0.7, 0.6], npieces=3)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            paras, text, calls = self.run_simple([0.7, 0.7, 0.7, 0.6], boom=True, npieces=3)
+        self.assertEqual(text, want)
+        self.assertEqual(len(paras), 3)
+        self.assertTrue(all("cands" not in w for p in paras for w in p["words"]))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(out.getvalue().count("[note] alternative words unavailable"), 1)
+        self.assertIn("RuntimeError: kaboom", out.getvalue())
 
 
 if __name__ == "__main__":

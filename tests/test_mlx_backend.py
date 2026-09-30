@@ -203,6 +203,19 @@ class MlxApiContractTests(unittest.TestCase):
         self.assertIn("extract_language", funcs)
         self.assertIn("_build_prompt", funcs)
 
+    def test_private_decoding_api_used_by_the_recorded_path(self):
+        """_single_recorded and word_continuations drive the model by hand (a copy of stream_generate's loop)."""
+        funcs = _funcs(self.parse("mlx_audio/stt/models/qwen3_asr/qwen3_asr.py"))
+        for name in ("_preprocess_audio", "get_audio_features", "_build_inputs_embeds", "_forward_with_embeds",
+                     "make_cache", "_eos_token_ids", "stream_generate"):
+            self.assertIn(name, funcs, f"{name}() is gone in mlx-audio {self.version}")
+        self.assertIn("cache", _params(funcs["_forward_with_embeds"]))
+        self.assertEqual(_params(funcs["_build_prompt"])[1:4], ["num_audio_tokens", "language", "system_prompt"])
+        step = self.parse("mlx_audio/lm/generate.py")
+        self.assertIn("prefill_step_size", _params(_funcs(step)["generate_step"]))
+        src = self.zf.read("mlx_audio/lm/generate.py").decode()
+        self.assertIn("count = min(prefill_step_size, total - processed - 1)", src)  # the prefill split we copy
+
     def test_load_and_helpers_exist(self):
         stt_init = self.zf.read("mlx_audio/stt/__init__.py").decode()
         self.assertIn("load", stt_init)

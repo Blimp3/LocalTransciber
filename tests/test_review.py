@@ -1,17 +1,20 @@
 """Review page: the .md parsing/joining and the local server (no model, no browser)."""
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.request
 
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from localtranscribe.review import join_md, main, make_server, parse_md, wav_bytes  # noqa: E402
+from localtranscribe.review import PAGE, join_md, main, make_server, parse_md, wav_bytes  # noqa: E402
 
 PLAIN = "[00:00:00] primo testo\n\n[00:00:19] secondo testo\n"
 SPEAKERS = "[00:01:23] Parlante 1: ciao\n\n[00:01:30] Parlante 2: buongiorno\n"
@@ -87,6 +90,56 @@ class Server(unittest.TestCase):
         self.assertEqual(self.req("save", data=b"[]").code, 400)
         with open(self.md, encoding="utf-8") as f:
             self.assertEqual(f.read(), PLAIN)
+
+    def test_foreign_host_refused(self):
+        self.assertEqual(self.req(headers={"Host": "evil.example"}).code, 404)
+        self.assertEqual(self.req("transcript.json", headers={"Host": "evil.example:80"}).code, 404)
+        port = self.server.server_address[1]
+        self.assertEqual(self.req(headers={"Host": f"localhost:{port}"}).status, 200)
+
+    def test_tmp_name_has_pid(self):
+        seen = []
+        real = os.replace
+        with mock.patch("os.replace", side_effect=lambda a, b: (seen.append(a), real(a, b))):
+            self.req("save", data=b'[{"stamp": null, "text": "x"}]')
+        self.assertEqual(seen, [f"{self.md}.{os.getpid()}.tmp"])
+        self.assertEqual(os.listdir(self.dir.name), ["r.md"])
+
+
+NODE_RACE = """
+const vm = require('vm');
+let visible = 'older edit', pending = [], listeners = {}, bodies = [];
+const els = {};
+const el = id => els[id] || (els[id] = {id, textContent: '', querySelectorAll: () => [{dataset: {stamp: '00:00:00'},
+  querySelector: () => ({get innerText() { return visible; }})}]});
+const ctx = {document: {getElementById: el}, addEventListener: (t, f) => listeners[t] = f, Date,
+  fetch: (u, o) => u === 'save' ? new Promise(res => { bodies.push(JSON.parse(o.body)[0].text); pending.push(res); }) : Promise.reject(0)};
+vm.createContext(ctx); vm.runInContext(process.argv[1], ctx);
+const tick = () => new Promise(r => setImmediate(r));
+(async () => {
+  const s1 = ctx.save(); await tick();
+  const ev = {preventDefault() {}}; listeners.beforeunload(ev);
+  const warned = ev.returnValue === '';
+  visible = 'newer edit'; vm.runInContext('markDirty()', ctx); const s2 = ctx.save();
+  await tick();
+  const started = pending.length;                 // the second request must wait for the first
+  pending[0]({ok: true}); await s1; await tick();
+  pending[1]({ok: true}); await s2;
+  console.log(JSON.stringify({warned, started, bodies, dirty: vm.runInContext('dirty', ctx), saving: vm.runInContext('saving', ctx)}));
+})();
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not installed")
+class SaveRace(unittest.TestCase):
+    def test_saves_are_serialized_and_newest_lands_last(self):
+        script = PAGE.split("<script>", 1)[1].split("</script>", 1)[0]
+        out = subprocess.run(["node", "-e", NODE_RACE, script], capture_output=True, text=True, timeout=30, check=True)
+        r = json.loads(out.stdout)
+        self.assertTrue(r["warned"])
+        self.assertEqual(r["started"], 1)
+        self.assertEqual(r["bodies"], ["older edit", "newer edit"])
+        self.assertEqual((r["dirty"], r["saving"]), (False, 0))
 
 
 class Suggestions(Server):

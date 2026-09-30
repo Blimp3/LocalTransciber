@@ -44,7 +44,7 @@ CHOICE="$(osascript -e 'button returned of (display dialog "Vuoi separare chi pa
 case "$CHOICE" in
   "Separa 2 persone") EXTRA=(--speakers 2) ;;
   "Testo unico")
-    AI="$(osascript -e 'button returned of (display dialog "Vuoi i suggerimenti AI per le parole incerte? Un piccolo modello sul tuo Mac propone correzioni, che poi accetti o rifiuti con Rivedi.command. Ci vuole circa un quarto di tempo in più." with title "Trascrivi" buttons {"Annulla", "Sì, con suggerimenti", "No"} default button "No")' 2>/dev/null)"
+    AI="$(osascript -e 'button returned of (display dialog "Vuoi i suggerimenti AI per le parole incerte? Un piccolo modello sul tuo Mac propone correzioni, che poi accetti o rifiuti con Rivedi.command. Ci vuole circa il 10 % di tempo in più." with title "Trascrivi" buttons {"Annulla", "Sì, con suggerimenti", "No"} default button "No")' 2>/dev/null)"
     case "$AI" in
       "Sì, con suggerimenti") EXTRA=(--correct) ;;
       "No") ;;

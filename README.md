@@ -96,7 +96,8 @@ transcribe.bat  call.m4a --speakers 2                                           
 
 The transcript `<recording>.md` is written next to the recording (or into `--out-dir`). Long recordings are cut at
 quiet moments into pieces of about 20 seconds; each piece becomes a paragraph that starts with its `[hh:mm:ss]`
-timestamp. With `--speakers`, each turn starts with the timestamp and the speaker's label.
+timestamp. With `--speakers`, each turn starts with the timestamp and the speaker's label. Transcribing the same
+recording again never loses your edits: if the `.md` changed, the old one is kept as `<recording>.bak-<date>.md`.
 
 | Option | What it does |
 |---|---|
@@ -108,7 +109,7 @@ timestamp. With `--speakers`, each turn starts with the timestamp and the speake
 | `--device auto`, `cuda`, `mps`, `cpu` | choose the hardware (default: the saved choice). On a Mac `mps` is the Apple GPU |
 | `--batch-size N` | pieces processed together (default: the saved choice, lowered if memory is tight; lower = less memory) |
 | `--confidence` | also save each word-piece's confidence and the model's alternatives, plus per-word `"words"` with an `"unsure"` flag and whole-word `"cands"` for the unsure ones, to `<recording>.review.json` (Apple Silicon only for now) |
-| `--correct` | suggest fixes for unsure words: a small local model (Qwen3-0.6B, downloaded at setup) chooses among the speech model's own alternatives, the Bend checker accepts or rejects each choice, and the accepted ones go to `<recording>.review.json` for the review page. The `.md` is not changed. About 25% slower; implies `--confidence`; Apple Silicon only for now |
+| `--correct` | suggest fixes for unsure words: a small local model (Qwen3-0.6B, downloaded at setup) chooses among the speech model's own alternatives, the Bend checker accepts or rejects each choice, and the accepted ones go to `<recording>.review.json` for the review page. The `.md` is not changed. About 10% slower; implies `--confidence`; Apple Silicon only for now |
 | `--stats` | print the device, model, speed and peak memory at the end |
 | `--chunk 20` | seconds per piece. Leave at 20: longer pieces are measurably less accurate |
 
@@ -125,11 +126,11 @@ written only when you press *Salva*), *Rifiuta* hides the suggestion. A suggesti
 still the original one.
 
 How good are the suggestions? The settings were tuned on 100 FLEURS clips and then checked, unchanged, on 200 other
-clips. On those 200, `--correct` made 32 suggestions: 12 fixed a mistake, 3 would have introduced one, and 17 changed
-a wrong word into another wrong word. Accepting all of them would lower the word error rate from 3.77 % to 3.55 %
-(on the tuning clips: 13 suggestions, 5 fixes, 1 new mistake, 3.51 % to 3.35 %). On its own the small model does
-worse than the speech model, so it only breaks ties between the speech model's own guesses, and only about one
-suggestion in three is a real fix: that is why every suggestion waits for you.
+clips. On those 200, `--correct` made 25 suggestions: 11 fixed a mistake, 3 would have introduced one, and 11 changed
+a wrong word into another wrong word. Accepting all of them would lower the word error rate from 3.77 % to 3.57 %
+(on the tuning clips: 12 suggestions, 5 fixes, 1 new mistake, 3.51 % to 3.35 %). On its own the small model does
+worse than the speech model, so it only breaks ties between the speech model's own guesses, and a bit less than half
+of the suggestions are real fixes: that is why every suggestion waits for you.
 
 ## Models
 
@@ -323,9 +324,10 @@ oppure PC Windows (meglio con scheda video NVIDIA). Circa 4 GB di spazio libero 
 
 **Uso su Mac.** Doppio clic su **`Trascrivi.command`**. La prima volta, se macOS non lo apre: clic destro sul file,
 **Apri**, poi ancora **Apri**. Scegli uno o più file audio o video; puoi anche far separare due persone che parlano
-(telefonate). Il testo viene salvato accanto a ogni file (stesso nome, estensione `.md`) e compare nel Finder. Per il
+(telefonate). Il testo viene salvato accanto a ogni file (stesso nome, estensione `.md`) e compare nel Finder. Se
+trascrivi di nuovo lo stesso file, il testo precedente non va perso: resta come `<nome>.bak-<data>.md`. Per il
 testo unico il programma chiede anche se vuoi i **suggerimenti AI** per le parole incerte: un piccolo modello sul tuo
-Mac propone correzioni (ci vuole circa un quarto di tempo in più), e nulla cambia finché non le accetti tu.
+Mac propone correzioni (ci vuole circa il 10 % di tempo in più), e nulla cambia finché non le accetti tu.
 
 **Rivedere il testo.** Doppio clic su **`Rivedi.command`** e scegli la registrazione: nel browser vedi il testo a sinistra
 e l'audio a destra. Clicca su un orario per ascoltare quel punto, correggi il testo e premi **Salva**. Se hai chiesto

@@ -5,12 +5,65 @@
 """
 import argparse
 import json
+import math
 import os
 import sys
 import time
 
 from . import config, devices, precheck
 from .devices import SetupError
+
+
+def _chunk_seconds(text):
+    try:
+        v = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid number: {text!r}")
+    if not (math.isfinite(v) and 5 <= v <= 120):
+        raise argparse.ArgumentTypeError(f"--chunk must be a number from 5 to 120 seconds, got {text}")
+    return v
+
+
+def _out_path(path, out_dir):
+    out_dir = out_dir or os.path.dirname(os.path.abspath(path))
+    return os.path.join(out_dir, os.path.splitext(os.path.basename(path))[0] + ".md")
+
+
+def _check_distinct_outputs(files, out_dir):
+    """Two inputs that would write the same .md (a.wav + a.mp3) must not silently overwrite each other."""
+    seen = {}
+    for f in files:
+        out = os.path.normcase(os.path.abspath(_out_path(f, out_dir)))
+        if out in seen:
+            raise SetupError(f"{seen[out]} and {f} would both write {out}. Rename one of them or run them separately.")
+        seen[out] = f
+
+
+def _write_atomic(path, text):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def _keep_previous(out_path, new_text):
+    """If out_path holds a different transcript, move it to <stem>.bak-YYYYMMDD-HHMMSS.md and say so."""
+    try:
+        with open(out_path, encoding="utf-8") as f:
+            old = f.read()
+    except FileNotFoundError:
+        return
+    except UnicodeDecodeError:
+        old = None
+    if old == new_text:
+        return
+    stem = os.path.splitext(out_path)[0] + ".bak-" + time.strftime("%Y%m%d-%H%M%S")
+    bak, n = stem + ".md", 1
+    while os.path.exists(bak):
+        n += 1
+        bak = f"{stem}-{n}.md"
+    os.replace(out_path, bak)
+    print(f"  previous transcript kept as {bak}")
 
 
 def build_parser():
@@ -22,7 +75,7 @@ def build_parser():
     ap.add_argument("--language", default=config.DEFAULT_LANGUAGE,
                     help='spoken language (default Italian; "auto" to detect)')
     ap.add_argument("--context", default="", help="optional names/terms that appear in the audio, to improve spelling")
-    ap.add_argument("--chunk", type=float, default=config.CHUNK_SECONDS,
+    ap.add_argument("--chunk", type=_chunk_seconds, default=config.CHUNK_SECONDS,
                     help=f"max seconds per piece (default {config.CHUNK_SECONDS}; longer hurts accuracy)")
     ap.add_argument("--out-dir", help="write transcripts here instead of next to the input files")
     ap.add_argument("--speakers", type=int, default=0,
@@ -114,6 +167,7 @@ def _pin_gpu(saved):
 
 
 def run(args):
+    _check_distinct_outputs(args.files, args.out_dir)
     saved = _saved_choice(args)
     _pin_gpu(saved)
     notes = []
@@ -162,44 +216,54 @@ def run(args):
             print(f"\n[skip] {name}: could not read audio ({e})")
             failed += 1
             continue
-        duration = len(wav) / config.SAMPLE_RATE
-        print(f"\n{name}: {duration / 60:.1f} min of audio, transcribing...", flush=True)
+        try:
+            duration = len(wav) / config.SAMPLE_RATE
+            print(f"\n{name}: {duration / 60:.1f} min of audio, transcribing...", flush=True)
 
-        start = time.perf_counter()
-        paragraphs = [] if getattr(backend, "record_confidence", False) else None
-        corrector = None
-        if args.correct and paragraphs is not None:
-            from .correct import Corrector
+            start = time.perf_counter()
+            paragraphs = [] if getattr(backend, "record_confidence", False) else None
+            corrector = None
+            if args.correct and paragraphs is not None:
+                from .correct import Corrector
 
-            corrector = Corrector()
-        if args.speakers:
-            from .diarize import diarize, first_appearance_names, fmt_time, transcribe_turns
+                corrector = Corrector()
+            if args.speakers:
+                from .diarize import diarize, first_appearance_names, fmt_time, transcribe_turns
 
-            runs = diarize(wav, n_speakers=args.speakers, device=devices.diarization_device(device))
-            b = get_backend()  # loaded after the speaker model has been released (matters on 8 GB Macs)
-            turns = transcribe_turns(b, wav, runs, language, context=args.context, progress=_progress())
-            names = first_appearance_names(turns)
-            text = "\n\n".join(f"[{fmt_time(a)}] {names[s]}: {t}" for a, s, t in turns if t)
-        else:
-            text = transcribe_wav(get_backend(), wav, language, args.context, args.chunk, _progress(), paragraphs,
-                                  corrector)
-        elapsed = time.perf_counter() - start
-        audio_total += duration
-        time_total += elapsed
+                runs = diarize(wav, n_speakers=args.speakers, device=devices.diarization_device(device))
+                b = get_backend()  # first file: loaded after the speaker model is released (8 GB Macs)
+                turns = transcribe_turns(b, wav, runs, language, context=args.context, progress=_progress())
+                names = first_appearance_names(turns)
+                text = "\n\n".join(f"[{fmt_time(a)}] {names[s]}: {t}" for a, s, t in turns if t)
+            else:
+                text = transcribe_wav(get_backend(), wav, language, args.context, args.chunk, _progress(), paragraphs,
+                                      corrector)
+            elapsed = time.perf_counter() - start
+            audio_total += duration
+            time_total += elapsed
 
-        out_dir = args.out_dir or os.path.dirname(os.path.abspath(path))
-        os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, os.path.splitext(name)[0] + ".md")
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(text + "\n")
-        if paragraphs is not None:
+            out_path = _out_path(path, args.out_dir)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            _keep_previous(out_path, text + "\n")
+            _write_atomic(out_path, text + "\n")
             side = os.path.splitext(out_path)[0] + ".review.json"
-            with open(side, "w", encoding="utf-8") as f:
-                json.dump({"version": 1, "model": repo, "top_k": config.CONFIDENCE_TOP_K, "paragraphs": paragraphs},
-                          f, ensure_ascii=False)
-            print(f"  confidence -> {side}")
-        rt = duration / max(elapsed, 1e-6)
-        print(f"  done in {elapsed:.0f}s ({rt:.{0 if rt >= 10 else 1}f}x realtime) -> {out_path}")
+            if paragraphs is not None:
+                _write_atomic(side, json.dumps({"version": 1, "model": repo, "top_k": config.CONFIDENCE_TOP_K,
+                                                "paragraphs": paragraphs}, ensure_ascii=False))
+                print(f"  confidence -> {side}")
+            else:
+                try:
+                    os.remove(side)  # a sidecar of an older run would not match this transcript
+                except FileNotFoundError:
+                    pass
+            rt = duration / max(elapsed, 1e-6)
+            print(f"  done in {elapsed:.0f}s ({rt:.{0 if rt >= 10 else 1}f}x realtime) -> {out_path}")
+        except SetupError:
+            raise
+        except Exception as e:
+            print(f"\n[fail] {name}: {type(e).__name__}: {e}")
+            failed += 1
+            continue
 
     if args.stats and backend is not None:
         peak = backend.peak_memory_gb()
@@ -211,6 +275,8 @@ def run(args):
             print(f"  peak accelerator memory {peak:.2f} GB")
         if rss is not None:
             print(f"  peak process memory {rss:.2f} GB")
+    if failed:
+        print(f"\n{failed} of {len(args.files)} files failed")
     return 1 if failed else 0
 
 

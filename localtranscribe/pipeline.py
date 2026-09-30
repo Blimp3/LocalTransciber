@@ -44,7 +44,8 @@ def add_candidates(backend, piece, language, context, para):
     """Give each unsure word of `para` "cands": whole-word alternatives from the speech model. Its weakest piece is
     swapped for each of its alternatives and the model finishes the word. [{"w", "p"}], best first. A candidate is
     kept only if the model, after it, goes on with the original next token (or ends, for the last word): a one-word
-    replacement that fits the rest of the sentence."""
+    replacement that fits the rest of the sentence. "p" is like the word's own p: the product of all its pieces
+    (the unchanged pieces before the swapped one, the alternative, the continuation)."""
     words, toks = para["words"], para["tokens"]
     reqs, meta = [], []
     for k, w in enumerate(words):
@@ -57,17 +58,18 @@ def add_candidates(backend, piece, language, context, para):
                 and not (j > a and x[1][:1].isspace()) and not (j == a and k > 0 and not x[1][:1].isspace())]
         if alts:
             reqs.append(([t["id"] for t in toks[:j]], [x[0] for x in alts]))
-            meta.append((w, "".join(t["text"] for t in toks[a:j]), alts, b))
+            pre = float(np.prod([toks[n]["p"] for n in range(a, j)]))
+            meta.append((w, [t["id"] for t in toks[a:j]], alts, b, pre))
     if not reqs:
         return
-    for (w, head, alts, b), row in zip(meta, backend.word_continuations(piece, language, context, reqs)):
+    for (w, head, alts, b, pre), row in zip(meta, backend.word_continuations(piece, language, context, reqs)):
         best = {}
-        for (_id, text, p), cont in zip(alts, row):
+        for (_id, _text, p), cont in zip(alts, row):
             if cont is None or (cont[2] != toks[b + 1]["id"] if b + 1 < len(toks) else cont[2] not in backend.eos_ids):
                 continue
-            word = (head + text + "".join(backend.decode([t]) for t in cont[0])).strip()
-            p = round(p * float(np.prod(cont[1])), 5)
-            if word and word.split() == [word] and word != w["w"] and p > best.get(word, 0):
+            word = backend.decode(head + [_id] + cont[0]).strip()  # together: a letter can span two pieces
+            p = round(p * float(np.prod(cont[1])) * pre, 5)
+            if word and "\ufffd" not in word and word.split() == [word] and word != w["w"] and p > best.get(word, 0):
                 best[word] = p
         if best:
             w["cands"] = [{"w": t, "p": p} for t, p in sorted(best.items(), key=lambda x: -x[1])]
@@ -83,19 +85,40 @@ def transcribe_wav(backend, wav, language, context="", chunk_seconds=config.CHUN
     to words (correct.Corrector); it never changes the text."""
     records = [] if paragraphs is not None else None
     chunks = split_wav(wav, chunk_seconds)
-    texts = transcribe_pieces(backend, [p for p, _ in chunks], language, context, progress, records)
-    offsets = [o for _, o in chunks]
-    if paragraphs is not None:
-        for (piece, _), t, o, r in zip(chunks, texts, offsets, records):
-            if t:
-                words = group_words(r["tokens"], t) if r["aligned"] else None
-                for w in words or []:
-                    if w["p"] < config.CONFIDENCE_UNSURE:
-                        w["unsure"] = True
-                para = dict(r, text=t, offset=o, words=words)
-                if words and hasattr(backend, "word_continuations"):
-                    add_candidates(backend, piece, language, context, para)
-                    if corrector:
-                        corrector(para)
-                paragraphs.append(para)
-    return "\n\n".join(f"[{fmt_time(o)}] {t}" for t, o in zip(texts, offsets) if t)
+    cands_ok = True
+
+    def add_paragraph(piece, t, o, r):
+        nonlocal cands_ok
+        if t:
+            words = group_words(r["tokens"], t) if r["aligned"] else None
+            for w in words or []:
+                if w["p"] < config.CONFIDENCE_UNSURE:
+                    w["unsure"] = True
+            para = dict(r, text=t, offset=o, words=words)
+            if words and hasattr(backend, "word_continuations"):
+                if cands_ok:
+                    try:
+                        add_candidates(backend, piece, language, context, para)
+                    except Exception as e:  # the transcript is worth more than the alternatives
+                        cands_ok = False
+                        print(f"  [note] alternative words unavailable ({type(e).__name__}: {e}); "
+                              "continuing without suggestions.")
+                if corrector:
+                    corrector(para)
+            paragraphs.append(para)
+
+    if paragraphs is not None and backend.batch_size == 1 and hasattr(backend, "word_continuations"):
+        # One piece at a time: the backend keeps the KV cache of the piece it just decoded, and add_candidates
+        # reuses it (a later piece would replace it).
+        texts = []
+        for piece, o in chunks:
+            texts += transcribe_pieces(backend, [piece], language, context, records=records)
+            add_paragraph(piece, texts[-1], o, records[-1])
+            if progress:
+                progress(len(texts), len(chunks))
+    else:
+        texts = transcribe_pieces(backend, [p for p, _ in chunks], language, context, progress, records)
+        if paragraphs is not None:
+            for (piece, o), t, r in zip(chunks, texts, records):
+                add_paragraph(piece, t, o, r)
+    return "\n\n".join(f"[{fmt_time(o)}] {t}" for t, (_, o) in zip(texts, chunks) if t)

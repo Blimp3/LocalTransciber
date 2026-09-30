@@ -58,6 +58,7 @@ localtranscribe_settings.json.tmp
 !ROADMAP.md
 !tests/README.md
 *.review.json
+*.tmp
 
 # --- Local AI-assistant notes and settings (stay on this computer) ----------------------
 CLAUDE.md

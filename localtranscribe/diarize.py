@@ -136,6 +136,9 @@ def diarize(wav, n_speakers=2, device="cpu", reference=None):
     windows = _windows(regions)
     if not windows:
         return []
+    if not reference and len(windows) < n_speakers:
+        print("[note] too little speech to tell voices apart: everything is labelled as one speaker.", file=sys.stderr)
+        return [(a / SR, b / SR, 0) for a, b in regions]
     X = _embed(wav, windows, device)
     if reference:
         cents = []
@@ -177,7 +180,10 @@ def diarize(wav, n_speakers=2, device="cpu", reference=None):
 
 
 def transcribe_turns(backend, wav, runs, language, context="", max_piece=20.0, pad=0.15, progress=None):
-    """Transcribe each run through the backend, then merge consecutive runs of the same speaker into turns."""
+    """Transcribe each run through the backend, then merge consecutive runs of the same speaker into turns.
+    `pad` overlaps neighbouring runs on purpose: run edges land 0.1-0.45 s off the true change, and on two-voice
+    FLEURS dialogues clamping the pad to the gap midpoint lost words (pooled WER 5.28% -> 5.93%) and removed no
+    duplicates."""
     pieces, owner = [], []
     for k, (a, b, _) in enumerate(runs):
         seg = wav[max(0, int((a - pad) * SR)):int((b + pad) * SR)]

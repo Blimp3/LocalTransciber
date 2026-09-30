@@ -106,6 +106,9 @@ def make_server(audio_bytes, md_path, title, port=0):
                 pass
 
         def route(self):
+            port = self.server.server_address[1]  # DNS rebinding: only our own host names
+            if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+                return None
             path = self.path.split("?", 1)[0]
             return path[len(base):] if path.startswith(base) else None
 
@@ -158,7 +161,7 @@ def make_server(audio_bytes, md_path, title, port=0):
                 return self.send(400, b"bad request")
             if not text.strip():
                 return self.send(400, b"empty transcript")
-            tmp = md_path + ".tmp"
+            tmp = f"{md_path}.{os.getpid()}.tmp"
             try:
                 with lock:
                     with open(tmp, "w", encoding="utf-8", newline="\n") as f:
@@ -195,7 +198,7 @@ def main(argv=None):
         return 1
     server, url = make_server(audio, md, os.path.basename(args.recording), args.port)
     print(url)
-    print("Press Ctrl+C to stop.")
+    print("Press Ctrl+C to stop.", flush=True)  # a launcher or log reading stdout needs the URL now
     if not args.no_browser:
         threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
     try:
@@ -254,7 +257,7 @@ mark{background:#ffe27a;color:#1d1d1f;border-radius:3px;padding:0 2px}
 <script>
 const $ = id => document.getElementById(id);
 const audio = $("a"), status = $("status"), box = $("text");
-let dirty = false;
+let dirty = false, saving = 0, chain = Promise.resolve();
 function setStatus(s) { status.textContent = s; }
 function markDirty() { dirty = true; setStatus("Modifiche non salvate"); }
 function countOpen() {
@@ -265,14 +268,16 @@ function unwrap(m) { m.replaceWith(document.createTextNode(m.textContent)); }
 function paragraphs() {
   return [...box.querySelectorAll(".p")].map(p => ({stamp: p.dataset.stamp || null, text: p.querySelector(".tx").innerText}));
 }
-async function save() {
-  const body = JSON.stringify(paragraphs());
-  dirty = false;
+function save() { saving++; return chain = chain.then(doSave); }  // one request at a time, snapshot taken when its turn comes
+async function doSave() {
   try {
+    const body = JSON.stringify(paragraphs());
+    dirty = false;
     const r = await fetch("save", {method: "POST", body});
     if (!r.ok) throw new Error(r.status);
     if (!dirty) setStatus("Salvato " + new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}));
   } catch (e) { dirty = true; setStatus("Errore nel salvataggio"); }
+  finally { saving--; }
 }
 function show(items) {
   box.textContent = "";
@@ -332,7 +337,7 @@ fetch("transcript.json").then(r => { if (!r.ok) throw 0; return r.json(); }).the
   .catch(() => { box.textContent = "Impossibile caricare la trascrizione (file .md mancante o illeggibile)."; });
 $("save").onclick = save;
 addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); } });
-addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+addEventListener("beforeunload", e => { if (dirty || saving) { e.preventDefault(); e.returnValue = ""; } });
 </script></body></html>
 """
 

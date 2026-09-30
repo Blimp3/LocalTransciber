@@ -96,6 +96,19 @@ class TextTests(unittest.TestCase):
         self.assertEqual(textutil.strip_context_echo("  nessun eco  ", ctx), "nessun eco")
         self.assertEqual(textutil.strip_context_echo(" testo ", ""), "testo")
 
+    def test_strip_context_echo_keeps_real_speech(self):
+        sce = textutil.strip_context_echo
+        name = "Mario Rossi"
+        for t in ("Mario Rossi apre la riunione.", "Oggi Mario Rossi presenta il progetto.", "Ha parlato con Mario Rossi"):
+            self.assertEqual(sce(t, name), t)
+        self.assertEqual(sce("Questo aroma cambia tutto.", "Roma"), "Questo aroma cambia tutto.")
+        self.assertEqual(sce("Roma", "Roma"), "")
+        self.assertEqual(sce("Mario Rossi", name), "")
+        long_ctx = "Mario Rossi, Politecnico di Milano, LoRaWAN"
+        self.assertEqual(sce("Sono Mario Rossi, Politecnico di Milano, e parlo di LoRaWAN.", long_ctx),
+                         "Sono Mario Rossi, Politecnico di Milano, e parlo di LoRaWAN.")
+        self.assertEqual(sce(long_ctx, long_ctx), "")
+
     def test_parse_asr_output(self):
         self.assertEqual(textutil.parse_asr_output("language Italian<asr_text>ciao a tutti"), ("Italian", "ciao a tutti"))
         self.assertEqual(textutil.parse_asr_output("language None<asr_text>"), ("", ""))
@@ -291,6 +304,52 @@ def _encode(av, path, samples, rate, codec, fmt):
             out.mux(packet)
 
 
+class ChunkerGuardTests(unittest.TestCase):
+    def _run(self, fn, secs=10):
+        import signal
+
+        def boom(*a):
+            raise TimeoutError("chunker did not finish")
+        if not hasattr(signal, "SIGALRM"):  # Windows: no alarm, run without the timeout guard
+            return fn()
+        old = signal.signal(signal.SIGALRM, boom)
+        signal.alarm(secs)
+        try:
+            return fn()
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+
+    def test_noise_then_long_zeros_makes_bounded_progress(self):
+        rng = np.random.default_rng(0)
+        wav = np.concatenate([rng.standard_normal(3 * SR) * 0.1, np.zeros(30 * SR)]).astype(np.float32)
+        pieces = self._run(lambda: textutil.split_audio_into_chunks(wav, SR, 5))
+        self.assertLessEqual(len(pieces), 33 * 2 // 5 + 3)
+        self.assertTrue(np.array_equal(np.concatenate([p for p, _ in pieces]), wav))
+
+    def test_bad_chunk_seconds_raise(self):
+        for bad in (float("nan"), float("inf"), 0, -5, 0.5):
+            with self.assertRaises(ValueError):
+                textutil.split_audio_into_chunks(np.zeros(SR * 30, np.float32), SR, bad)
+
+    def test_default_20s_cuts_are_unchanged(self):
+        wav = noisy_speechlike(60, seed=1)
+        pieces = textutil.split_audio_into_chunks(wav, SR, 20)
+        # the old rule (left = max(start, cut - expand)) picks the same cut whenever cut - expand >= start + max_len // 2
+        # i.e. for expand 5 s and max 20 s always: 15 s >= 10 s
+        self.assertEqual([round(o, 3) for _, o in pieces], self._old_offsets(wav, 20))
+
+    @staticmethod
+    def _old_offsets(wav, max_chunk_sec):
+        import inspect
+        src = inspect.getsource(textutil.split_audio_into_chunks).replace(
+            "left = max(start + max_len // 2, cut - expand)", "left = max(start, cut - expand)")
+        ns = {"np": np, "List": list, "Tuple": tuple, "math": __import__("math"),
+              "MIN_ASR_INPUT_SECONDS": textutil.MIN_ASR_INPUT_SECONDS}
+        exec(src, ns)
+        return [round(o, 3) for _, o in ns["split_audio_into_chunks"](wav, SR, max_chunk_sec)]
+
+
 class DiarizeHelpersTests(unittest.TestCase):
     def test_smooth_absorbs_short_runs(self):
         from localtranscribe import diarize
@@ -311,6 +370,32 @@ class DiarizeHelpersTests(unittest.TestCase):
         fake = FakeBackend(texts=["uno", "due", "tre", "quattro"])
         turns = diarize.transcribe_turns(fake, wav, runs, "Italian")
         self.assertEqual(turns, [(0.0, 0, "uno due"), (9.0, 1, "tre"), (13.0, 0, "quattro")])
+
+
+class DiarizeFewWindowsTests(unittest.TestCase):
+    def setUp(self):
+        try:
+            import sklearn  # noqa: F401
+        except ImportError:
+            self.skipTest("sklearn not installed")
+
+    def test_fewer_windows_than_speakers_is_one_speaker_without_loading_a_model(self):
+        from localtranscribe import diarize
+
+        with mock.patch.object(diarize, "_speech_regions", return_value=[(SR, int(2.5 * SR))]), \
+                mock.patch.object(diarize, "_embed", side_effect=AssertionError("model loaded")):
+            out = diarize.diarize(np.zeros(SR * 5, np.float32), n_speakers=2)
+        self.assertEqual(out, [(1.0, 2.5, 0)])
+
+    def test_two_windows_two_speakers_still_clusters(self):
+        from localtranscribe import diarize
+
+        regions = [(SR, int(2.5 * SR)), (4 * SR, int(5.5 * SR))]
+        emb = lambda wav, windows, dev: np.array([[1.0, 0.0], [0.0, 1.0]])
+        with mock.patch.object(diarize, "_speech_regions", return_value=regions), \
+                mock.patch.object(diarize, "_embed", side_effect=emb):
+            out = diarize.diarize(np.zeros(SR * 6, np.float32), n_speakers=2)
+        self.assertEqual({lab for _, _, lab in out}, {0, 1})
 
 
 class SetupModelsTests(unittest.TestCase):

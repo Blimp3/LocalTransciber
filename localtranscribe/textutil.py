@@ -6,6 +6,8 @@ qwen_asr/inference/utils.py). They are copied here so that the NVIDIA, CPU and A
 backends cut and clean the audio in exactly the same way, without the Mac needing to install
 `qwen-asr` and its heavy dependencies.
 """
+import math
+import re
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -49,6 +51,8 @@ def split_audio_into_chunks(
     Concatenating all returned pieces reproduces the original audio exactly (no overlap, no gap).
     Returns [(piece, offset_seconds)].
     """
+    if not (math.isfinite(max_chunk_sec) and max_chunk_sec >= 1):
+        raise ValueError("max_chunk_sec must be a finite number of seconds >= 1")
     wav = np.asarray(wav, dtype=np.float32)
     if wav.ndim > 1:
         wav = np.mean(wav, axis=-1).astype(np.float32)
@@ -68,7 +72,7 @@ def split_audio_into_chunks(
 
     while (total_len - start) > max_len + expand:
         cut = start + max_len
-        left = max(start, cut - expand)
+        left = max(start + max_len // 2, cut - expand)  # at least half a piece of progress
         right = min(total_len - min_tail, cut + expand)
 
         if right - left <= win:
@@ -188,13 +192,18 @@ def parse_asr_output(raw: Optional[str], user_language: Optional[str] = None) ->
 
 
 def strip_context_echo(text, context):
-    """On near-silent pieces the model can repeat the --context hint verbatim; cut the text where
-    that starts."""
-    probe = " ".join(context.split()[:5]).lower()
-    if probe:
-        pos = text.lower().find(probe)
-        if pos != -1:
-            return text[:pos].strip()
+    """On near-silent pieces the model can repeat the --context hint verbatim. Cut it only when the
+    END of the text is such an echo: whole words (case and punctuation ignored) equal to the start of
+    the context. With a 1-2 word context the whole text must be the echo, so real speech that
+    mentions a name is never cut."""
+    ctx = re.findall(r"\w+", context.lower())
+    words = list(re.finditer(r"\w+", text))
+    lows = [m.group().lower() for m in words]
+    need = min(len(ctx), 3)
+    for k in range(len(words)):
+        tail = lows[k:]
+        if len(tail) >= need and tail == ctx[:len(tail)] and (need >= 3 or k == 0):
+            return text[:words[k].start()].strip()
     return text.strip()
 
 

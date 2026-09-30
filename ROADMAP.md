@@ -17,7 +17,8 @@ review and correction on top without changing how it is used.
 - `--confidence` (Mac): each word's probability is saved to `<recording>.review.json` without changing the
   transcript. Words below 0.9 are flagged unsure (9.4 % of words, 70 % of the mistakes on 100 FLEURS clips) and get
   whole-word candidates from the speech model itself: the weakest piece of the word is swapped for each likely
-  alternative and the model finishes the word, kept only if it then continues with the original next word.
+  alternative and the model finishes the word, kept only if it then continues with the original next word. The
+  candidates reuse the transcription's own cache, so this costs about 10 % extra time.
 - Review page (`Rivedi.command`, `python -m localtranscribe.review`): editable transcript beside the audio on
   `127.0.0.1`, click a timestamp to jump, save writes the `.md` back.
 - AI suggestions with guardrails (`--correct`, Mac). Four parts, each a safety net for the previous:
@@ -29,20 +30,21 @@ review and correction on top without changing how it is used.
      [Bend](https://github.com/HigherOrderCO/Bend) (`PROOF.bend`) and the checker runs as a native binary.
   4. **You have the final say**: the review page highlights each suggestion; nothing is applied until you accept it
      and save.
-  Tuned on 100 FLEURS clips (13 suggestions, 5 fixes, 1 new mistake) and checked unchanged on 200 other clips: 32
-  suggestions, 12 fixes, 3 new mistakes; accepting all lowers the word error rate from 3.77 % to 3.55 %.
+  Tuned on 100 FLEURS clips (12 suggestions, 5 fixes, 1 new mistake) and checked unchanged on 200 other clips: 25
+  suggestions, 11 fixes, 3 new mistakes; accepting all lowers the word error rate from 3.77 % to 3.57 %.
   `Trascrivi.command` offers the suggestions for single-speaker transcripts.
+- Reliability fixes after an external review: a new run never overwrites a transcript you edited (the old one is kept
+  as `<name>.bak-<date>.md`), one failing file no longer stops the others, `--context` never cuts real speech, a very
+  short voice note no longer crashes `--speakers`, and the review page saves in order.
 
 ## Next: better suggestions
 
 - Measure on real calls and lectures, not only FLEURS read speech.
 - Reach more mistakes: the right word is among the candidates for only about 38 % of flagged mistakes; many of the
   rest are numbers written out ("dieci" for "10") or two neighbouring words wrong together.
-- Fewer false alarms: only about one suggestion in three is a real fix (a higher weight on the speech model, ALPHA 8,
-  gave fewer new mistakes on the held-out clips at a similar number of fixes).
+- Fewer false alarms: a bit less than half of the suggestions are real fixes (a higher weight on the speech model,
+  ALPHA 8, gave fewer new mistakes on the held-out clips, but not on the tuning clips).
 - Let the review page remember rejected suggestions.
-- Make `--confidence` cheaper: the candidates re-read each piece's audio once (about 1.3-1.6x the time); reusing the
-  transcription's own cache would remove that.
 
 ## Under evaluation
 
