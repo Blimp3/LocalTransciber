@@ -2,7 +2,7 @@
 # Self-test for a real Apple Silicon Mac. Measures accuracy, speed and memory of every Mac model preset
 # and of speaker separation, and writes ONE report file: mac_selftest_report.txt (no personal data).
 #
-#   bash mac_selftest.sh            # full test: 100 FLEURS clips per preset (about 1 hour on a MacBook Air)
+#   bash mac_selftest.sh            # full test: 100 FLEURS clips per preset (about 25 min on an M2 Air, plus downloads)
 #   bash mac_selftest.sh --n 30     # quicker test with 30 clips per preset
 #   bash mac_selftest.sh --models mlx-community/Qwen3-ASR-0.6B-8bit    # only some presets
 #

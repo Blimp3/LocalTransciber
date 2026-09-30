@@ -6,3 +6,41 @@ This product includes code adapted from the qwen-asr package
 team, licensed under the Apache License, Version 2.0. See
 localtranscribe/textutil.py for the adapted functions and the changes
 made to them.
+
+This product includes code adapted from mlx-audio
+(https://github.com/Blaizzy/mlx-audio), Copyright (c) 2024 Prince
+Canuma, licensed under the MIT License (full text below). See
+_single_recorded in localtranscribe/backends/mlx_qwen.py: the decoding
+loop of mlx-audio 0.5.7 (stream_generate and generate_step), changed to
+record each word-piece's probability and to keep the cache.
+
+The file bin/guard-macos-arm64 is compiled from guard_cli.bend and
+guard.bend with Bend 2 (https://github.com/HigherOrderCO/Bend),
+Copyright 2026 HigherOrderCO, licensed under the Apache License,
+Version 2.0, and contains Bend's runtime code. The LICENSE file in this
+repository is a copy of that license.
+
+------------------------------------------------------------------------
+mlx-audio
+
+MIT License
+
+Copyright (c) 2024 Prince Canuma
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

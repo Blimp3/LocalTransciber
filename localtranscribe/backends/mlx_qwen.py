@@ -13,6 +13,9 @@ Everything below was checked against the source of the pinned mlx-audio 0.5.7
     qwen-asr. The only difference: mlx-audio appends one "\\n" after a non-empty system prompt.
   * With batch_size > 1 we call `_generate_chunks_batched` (private, present in 0.5.7) so that
     several of OUR pieces decode together; any error there drops back to the public API.
+
+`_single_recorded` is adapted from mlx-audio 0.5.7 (MIT, Copyright (c) 2024 Prince Canuma; the license text is in
+the NOTICE file).
 """
 import sys
 from typing import List, Optional

@@ -36,6 +36,10 @@ review and correction on top without changing how it is used.
 - Reliability fixes after an external review: a new run never overwrites a transcript you edited (the old one is kept
   as `<name>.bak-<date>.md`), one failing file no longer stops the others, `--context` never cuts real speech, a very
   short voice note no longer crashes `--speakers`, and the review page saves in order.
+- A finished transcript is never lost: the output folder is checked before the model loads, the text done so far is
+  kept in `<name>.partial.md` while a long recording runs, a `.md` that cannot be replaced (open in another program)
+  is saved as `<name>.new-<date>.md`, a silent recording writes nothing, and the review page keeps a `.bak` copy when
+  the file changed on disk.
 
 ## Next: better suggestions
 
@@ -50,7 +54,8 @@ review and correction on top without changing how it is used.
 
 - **Whisper as an alternative backend**, A/B-tested against Qwen3-ASR on real phone calls and lecture recordings
   rather than only on FLEURS read speech. The backend interface already allows it.
-- **Voice-activity trimming before chunking**, to cut hallucinations on long silences and speed things up.
+- **Skipping silence before chunking**, to cut hallucinations and speed things up: both models invent a short phrase
+  on a piece that is only silence.
 - **Optional speech enhancement (denoising) before transcription**, enabled only where measurements show it helps
   (very noisy recordings); on clean audio it tends to hurt.
 

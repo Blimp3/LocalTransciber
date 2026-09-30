@@ -35,6 +35,9 @@ after that everything runs offline on your Apple Silicon Mac, your NVIDIA GPU, o
   alternatives at unsure words. A rule checker, proven correct in [Bend](https://github.com/HigherOrderCO/Bend),
   rejects anything else, and you accept or reject each suggestion on the review page. Nothing changes on its own.
 - **Review page.** A local page with the editable transcript beside the audio; click a timestamp to jump there.
+- **Never loses a transcript.** A new run keeps the transcript you edited as a backup, a crash or a closed laptop
+  leaves the text done so far on disk, and a file that cannot be replaced is saved under another name
+  (see [Your transcripts are safe](#your-transcripts-are-safe)).
 - **Double-click launchers** for people who never open a terminal: `Trascrivi.command` and `Rivedi.command` on
   Mac, drag-and-drop onto `transcribe.bat` on Windows.
 
@@ -44,7 +47,7 @@ after that everything runs offline on your Apple Silicon Mac, your NVIDIA GPU, o
 |---|---|---|---|
 | System | macOS 14 (Sonoma) or newer, M1 or newer. Intel Macs are not supported. | Windows 10/11, NVIDIA driver 570.65 or newer, GeForce GTX 16 / RTX 20 series (2018) or newer | Windows 10/11 |
 | GPU memory | 8 GB unified memory or more for *best* | 6 GB for *best*, 3 GB for *light* | - |
-| Free disk space | about 4 GB | about 12 GB (10 GB with one model) | about 4 GB |
+| Free disk space | about 5 GB (6 GB with both models) | about 12 GB (10 GB with one model) | about 4 GB |
 | Internet | setup only | setup only | setup only |
 
 Linux works with a manual install (see [Development](#development)) but is not officially supported.
@@ -96,8 +99,7 @@ transcribe.bat  call.m4a --speakers 2                                           
 
 The transcript `<recording>.md` is written next to the recording (or into `--out-dir`). Long recordings are cut at
 quiet moments into pieces of about 20 seconds; each piece becomes a paragraph that starts with its `[hh:mm:ss]`
-timestamp. With `--speakers`, each turn starts with the timestamp and the speaker's label. Transcribing the same
-recording again never loses your edits: if the `.md` changed, the old one is kept as `<recording>.bak-<date>.md`.
+timestamp. With `--speakers`, each turn starts with the timestamp and the speaker's label.
 
 | Option | What it does |
 |---|---|
@@ -112,6 +114,25 @@ recording again never loses your edits: if the `.md` changed, the old one is kep
 | `--correct` | suggest fixes for unsure words: a small local model (Qwen3-0.6B, downloaded at setup) chooses among the speech model's own alternatives, the Bend checker accepts or rejects each choice, and the accepted ones go to `<recording>.review.json` for the review page. The `.md` is not changed. About 10% slower; implies `--confidence`; Apple Silicon only for now |
 | `--stats` | print the device, model, speed and peak memory at the end |
 | `--chunk 20` | seconds per piece. Leave at 20: longer pieces are measurably less accurate |
+
+### Your transcripts are safe
+
+A transcript can take an hour to make and longer to correct, so the program never throws one away:
+
+- **Transcribing the same recording again** keeps your edits: if the `.md` changed, the old one stays as
+  `<recording>.bak-<date>.md`.
+- **Before the model loads**, the program checks that every recording exists and that the output folder can be
+  written, so a locked folder is reported in seconds, not after the work is done.
+- **While a recording is being transcribed**, the text done so far is in `<recording>.partial.md`. If the computer
+  crashes, the battery dies or you press Ctrl+C, that file stays; it is removed when the transcript is complete.
+- **If the `.md` cannot be replaced** (on Windows: it is open in Word, or an antivirus or sync program is holding
+  it), the program tries three times, then saves the new transcript as `<recording>.new-<date>.md` next to it (or in
+  your home folder if that fails too) and says so. The old transcript is not touched.
+- **A silent recording writes nothing**: the program says that no speech was recognised and leaves any existing
+  transcript alone.
+- **The review page** keeps a `.bak` copy of the file on disk if it changed after the page was opened (a new
+  transcription, a second browser tab) before it saves your version. If saving fails, your edits stay on the page
+  and it says why.
 
 ### Review a transcript
 
@@ -231,7 +252,7 @@ python benchmark/bench.py --data benchmark/data/fleurs_it --model best     # WER
 python benchmark/make_longform.py --data benchmark/data/fleurs_it --out long.wav
 ./transcribe.sh long.wav --out-dir out && python benchmark/score_long.py --data benchmark/data/fleurs_it --hyp out/long.md
 python benchmark/diar_test.py --data benchmark/data/fleurs_it              # two-speaker check of --speakers
-bash mac_selftest.sh                                                       # Mac: all presets, batch sizes, speakers; writes mac_selftest_report.txt
+bash mac_selftest.sh                                                       # Mac: all presets and speakers, about 25 min; writes mac_selftest_report.txt
 ```
 
 On Windows use `.venv\Scripts\python.exe` and `transcribe.bat`. The self-test report contains no personal data (home
@@ -242,9 +263,9 @@ requirements-windows.txt` (NVIDIA) or `-r requirements-cpu.txt`, then `PYTHONPAT
 
 ## Roadmap
 
-The review page and a first version of the AI suggestions are done. Next: measure the suggestions on recordings they
-were not tuned on, reach more mistakes, and offer them from the double-click launcher. Details in
-[ROADMAP.md](ROADMAP.md).
+The review page and the AI suggestions are done, measured on clips they were not tuned on, and offered from the
+double-click launcher. Next: measure on real calls and lectures, reach more mistakes with fewer false alarms, and
+skip silent stretches before they reach the model. Details in [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 
@@ -268,19 +289,51 @@ command-line wrapper that Python calls. If you touch any of them, run `bend PROO
   model (`setup_windows.bat light`), or move the model cache with the `HF_HOME` environment variable.
 - **The NVIDIA card is not used**: run `check_hardware.bat`; it says whether the card is too old for the GPU build of
   PyTorch or the driver must be updated from nvidia.com/drivers. Then run the setup again.
-- **A recording gives an empty or short text**: the file may have no audio track; try another file.
+- **"no speech was recognised"**: the recording is silent or has no audio track. Nothing is written and an existing
+  transcript is left alone.
+- **"could not be replaced"**: the `.md` is open in another program (on Windows, Word locks it). The new transcript
+  was saved as `<recording>.new-<date>.md`; close the other program and keep the file you want.
+- **The run stopped half-way** (crash, empty battery, Ctrl+C): the text done so far is in `<recording>.partial.md`.
+  Run the transcription again for the whole text.
 - **Mac: "cannot be opened because the developer cannot be verified"**: right-click the file, choose **Open**.
+
+## Updating and uninstalling
+
+**Update.** With a clone: `git pull`, then run the setup script again. With the ZIP: download the new ZIP, unpack it
+and run the setup script in the new folder, then delete the old folder. The models are not downloaded again (they
+live outside the program folder, see below) and your transcripts are next to your recordings, not in the program
+folder.
+
+**Uninstall.** Nothing is installed system-wide except the small tool uv. Delete:
+
+- the program folder (it contains `.venv`, about 1 GB on a Mac and up to 5 GB with the NVIDIA packages);
+- the models, 2 - 7 GB, in the Hugging Face cache: `~/.cache/huggingface/hub` on Mac and Linux,
+  `%USERPROFILE%\.cache\huggingface\hub` on Windows (the folders named `models--mlx-community--Qwen3-...`,
+  `models--Qwen--Qwen3-ASR-...` and `models--microsoft--wavlm-base-plus-sv`);
+- optionally uv, its download cache and the Python it installed: run `uv cache clean` and
+  `uv python uninstall --all`, then delete `uv` (`~/.local/bin/uv` on a Mac).
 
 ## Privacy
 
 Everything runs on your computer. Setup downloads the models from Hugging Face and the Python packages from PyPI;
 afterwards the launchers set `HF_HUB_OFFLINE=1`, so neither the audio nor the transcripts ever leave the machine.
 
+A transcript can have companion files next to it: `<recording>.review.json` (word confidence and suggestions; it
+repeats the whole text), `<recording>.bak-<date>.md` (earlier versions), and `.partial.md` or `.new-<date>.md` after
+an interrupted or blocked save. When you delete or share a transcript, remember these too.
+
 ## License
 
-LocalTranscribe is released under the [Apache License 2.0](LICENSE). The audio chunker and repetition filter in
-`localtranscribe/textutil.py` are adapted from [`qwen-asr`](https://github.com/QwenLM/Qwen3-ASR) (Apache-2.0,
-copyright The Alibaba Qwen team), with the changes described above.
+LocalTranscribe is released under the [Apache License 2.0](LICENSE). Code from other projects that is part of this
+repository (the notices are in [`NOTICE`](NOTICE)):
+
+- The audio chunker and repetition filter in `localtranscribe/textutil.py` are adapted from
+  [`qwen-asr`](https://github.com/QwenLM/Qwen3-ASR) (Apache-2.0, copyright The Alibaba Qwen team), with the changes
+  described above.
+- The decoding loop that records word confidence (`_single_recorded` in `localtranscribe/backends/mlx_qwen.py`) is
+  adapted from [`mlx-audio`](https://github.com/Blaizzy/mlx-audio) (MIT, copyright Prince Canuma).
+- `bin/guard-macos-arm64` is compiled from `guard_cli.bend` with [Bend](https://github.com/HigherOrderCO/Bend)
+  (Apache-2.0, copyright HigherOrderCO) and contains Bend's runtime code.
 
 What it downloads and uses:
 
@@ -288,16 +341,20 @@ What it downloads and uses:
 |---|---|
 | Qwen3-ASR models (`Qwen/Qwen3-ASR-1.7B`, `-0.6B`) and the `qwen-asr` package | Apache-2.0 |
 | MLX conversions (`mlx-community/Qwen3-ASR-...`) | Apache-2.0 (as the originals) |
+| Correction model `mlx-community/Qwen3-0.6B-4bit` (used by `--correct`; a conversion of `Qwen/Qwen3-0.6B`) | Apache-2.0 |
 | MLX, `mlx-audio`, `mlx-lm` | MIT |
 | Silero VAD | MIT |
 | WavLM speaker model `microsoft/wavlm-base-plus-sv` (used by `--speakers`) | The model card points to the license of Microsoft's UniSpeech repository (CC BY-SA 3.0); the WavLM code (microsoft/unilm) is MIT. The weights are not included here; setup downloads them from Hugging Face. |
 | PyTorch, transformers, scikit-learn, PyAV | BSD / Apache-2.0 (PyAV bundles FFmpeg libraries under their own LGPL/GPL terms) |
+| uv (installed by the setup scripts) | MIT or Apache-2.0 |
+| Bend (only to rebuild the rule checker; not needed to use the program) | Apache-2.0 |
 | FLEURS test clips (tests and benchmark) | CC-BY-4.0, Google; attribution in [`tests/README.md`](tests/README.md) |
 
 ## Acknowledgements
 
 The Qwen team for Qwen3-ASR and the `qwen-asr` reference implementation; the MLX and `mlx-audio` maintainers and the
-`mlx-community` for the Apple Silicon conversions; Silero for the VAD; Microsoft for WavLM; Google for FLEURS.
+`mlx-community` for the Apple Silicon conversions; Silero for the VAD; Microsoft for WavLM; HigherOrderCO for
+Bend; Google for FLEURS.
 
 ---
 
@@ -308,7 +365,7 @@ file di testo, **direttamente sul tuo computer**: dopo l'installazione non serve
 computer.
 
 **Requisiti.** Mac con chip Apple (M1 o successivi) e macOS 14 o più recente (i Mac Intel non sono supportati),
-oppure PC Windows (meglio con scheda video NVIDIA). Circa 4 GB di spazio libero su Mac.
+oppure PC Windows (meglio con scheda video NVIDIA). Circa 5 GB di spazio libero su Mac.
 
 **Installazione su Mac (una volta sola)**
 
@@ -325,14 +382,17 @@ oppure PC Windows (meglio con scheda video NVIDIA). Circa 4 GB di spazio libero 
 **Uso su Mac.** Doppio clic su **`Trascrivi.command`**. La prima volta, se macOS non lo apre: clic destro sul file,
 **Apri**, poi ancora **Apri**. Scegli uno o più file audio o video; puoi anche far separare due persone che parlano
 (telefonate). Il testo viene salvato accanto a ogni file (stesso nome, estensione `.md`) e compare nel Finder. Se
-trascrivi di nuovo lo stesso file, il testo precedente non va perso: resta come `<nome>.bak-<data>.md`. Per il
+trascrivi di nuovo lo stesso file, il testo precedente non va perso: resta come `<nome>.bak-<data>.md`. Se il
+programma si interrompe a metà (batteria scarica, finestra chiusa), il testo fatto fino a quel punto è in
+`<nome>.partial.md`; se il file `.md` è aperto in un altro programma e non si può sostituire, il nuovo testo viene
+salvato come `<nome>.new-<data>.md`. Per il
 testo unico il programma chiede anche se vuoi i **suggerimenti AI** per le parole incerte: un piccolo modello sul tuo
 Mac propone correzioni (ci vuole circa il 10 % di tempo in più), e nulla cambia finché non le accetti tu.
 
 **Rivedere il testo.** Doppio clic su **`Rivedi.command`** e scegli la registrazione: nel browser vedi il testo a sinistra
 e l'audio a destra. Clicca su un orario per ascoltare quel punto, correggi il testo e premi **Salva**. Se hai chiesto
 i suggerimenti AI, le parole con un suggerimento sono evidenziate: **Accetta** o **Rifiuta**. Nulla cambia finché non
-premi **Salva**. Circa un suggerimento su tre è una vera correzione: controlla sempre ascoltando.
+premi **Salva**. Poco meno della metà dei suggerimenti è una vera correzione: controlla sempre ascoltando.
 
 **Consigli per il MacBook Air.** Tienilo **collegato all'alimentazione** per i file lunghi (non ha ventola e rallenta
 quando si scalda). Con 8 GB di memoria **chiudi i programmi pesanti** (browser con molte schede, videochiamate) prima
@@ -347,7 +407,15 @@ di trascrivere.
 `--context "Mario Rossi, Politecnico di Milano"`: la loro trascrizione sarà più precisa. Per separare i parlanti
 usa `--speakers 2`: il risultato è `[00:01:23] Parlante 1: ...` e `Parlante 2: ...`.
 
+**Aggiornare.** Scarica il nuovo ZIP, aprilo ed esegui di nuovo `bash setup_mac.sh` nella nuova cartella, poi elimina
+la vecchia. I modelli non vengono scaricati di nuovo e le tue trascrizioni restano accanto alle registrazioni.
+
+**Disinstallare.** Elimina la cartella del programma e, per liberare altri 2-3 GB, i modelli nella cartella
+`~/.cache/huggingface/hub` (nel Finder: **Vai > Vai alla cartella...**).
+
 **Privacy.** Tutto avviene sul tuo computer. Internet serve solo durante l'installazione per scaricare i modelli.
+Accanto a una trascrizione possono esserci file collegati (`.review.json`, `.bak-<data>.md`): se elimini o condividi
+una trascrizione, ricordati anche di questi.
 
 ---
 
