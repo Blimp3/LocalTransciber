@@ -18,6 +18,32 @@ _START_TOKENS_MARGIN = 5      # <|startoftranscript|><|lang|><|transcribe|><|not
 _MAX_PROMPT_TOKENS = 200      # keep the newest tokens of a long context (Whisper itself allows 223)
 _WINDOW_TOLERANCE = 8         # samples allowed above 30 s (rounding in the chunker)
 
+# Silence prepended to every piece before the feature extractor. Whisper often outputs only "Grazie" / "Grazie a tutti"
+# for pieces whose speech starts at sample 0 (VoxPopuli clips are cut mid-speech, ~17% of them). 0.05 s of zeros fixes it:
+# turbo, 1169 non-empty voxpopuli_it clips: WER 29.59 -> 16.47% (206 -> 4 clips that are "Grazie" only, i.e. reference
+# >= 10 words and hypothesis <= 3 words); FLEURS Italian tuning set: 3.01 -> 2.85. Chaotic in the pad length (same clips:
+# 0.03 s: 16.41%, 5 failing; 0.08 s: 17.35%, 20), so do not tune casually.
+LEAD_IN_S = 0.05
+# Linear fade in/out of the first/last FADE_S of the ORIGINAL piece (0 = off, the default; the code path is kept).
+# Tried with 0.05 s and rejected: on VoxPopuli it left one clip fewer failing (3 instead of 4), but it caused a 334-word
+# repetition loop on turbo (vp_pauses vpl_06) and made the long-form sets worse (turbo vp_long WER 7.23 vs 5.94,
+# vp_pauses 15.33 vs 10.66; large-v3 vp_long 6.41 vs 5.62, vp_pauses 15.05 vs 12.30, each vs lead-in only).
+FADE_S = 0.0
+
+
+def _prepare(piece, lead_in_s, fade_s):
+    """float32 copy of one piece: optional linear fade in/out of its own edges, then `lead_in_s` of zeros in front."""
+    x = np.array(piece, dtype=np.float32, copy=True).reshape(-1)
+    n_fade = min(int(round(fade_s * config.SAMPLE_RATE)), len(x) // 2)
+    if n_fade > 0:
+        ramp = np.linspace(0.0, 1.0, n_fade, dtype=np.float32)
+        x[:n_fade] *= ramp
+        x[len(x) - n_fade:] *= ramp[::-1]
+    n_lead = int(round(lead_in_s * config.SAMPLE_RATE))
+    if n_lead > 0:
+        x = np.concatenate([np.zeros(n_lead, dtype=np.float32), x])
+    return x
+
 
 def language_code(language: Optional[str]) -> Optional[str]:
     """English language name ("Italian") -> Whisper code ("it"); None stays None (auto-detect).
@@ -95,9 +121,10 @@ class TorchWhisperBackend(Backend):
         prompt = self._prompt_ids(context)
         n_prompt = 0 if prompt is None else len(prompt)
         max_new = max(1, min(config.MAX_NEW_TOKENS, DECODER_POSITIONS - n_prompt - _START_TOKENS_MARGIN))
+        lead_in_s, fade_s = LEAD_IN_S, FADE_S  # read at call time, so experiments can set them on the module
         out: List[str] = []
         for i in range(0, len(pieces), max(1, self.batch_size)):
-            batch = [np.asarray(p, dtype=np.float32) for p in pieces[i:i + self.batch_size]]
+            batch = [_prepare(p, lead_in_s, fade_s) for p in pieces[i:i + self.batch_size]]
             feats = self.processor.feature_extractor(batch, sampling_rate=config.SAMPLE_RATE,
                                                  return_attention_mask=True, return_tensors="pt")
             gen = dict(

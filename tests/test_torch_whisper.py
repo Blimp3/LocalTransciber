@@ -25,11 +25,13 @@ class FakeFeatureExtractor:
     def __init__(self, with_mask=False):
         self.with_mask = with_mask
         self.calls = []
+        self.batches = []  # the arrays received, per call
 
     def __call__(self, batch, sampling_rate=None, return_attention_mask=None, return_tensors=None):
         self.calls.append((len(batch), sampling_rate, return_attention_mask))
-        # first sample of each piece encodes its id, so the fake model can echo it back
-        feats = torch.tensor([[[float(b[0])]] for b in batch])
+        self.batches.append([np.array(b) for b in batch])
+        # the largest sample of each piece encodes its id (the first one is the lead-in zero), so the fake model can echo it back
+        feats = torch.tensor([[[float(np.max(b))]] for b in batch])
         out = {"input_features": feats}
         if self.with_mask:
             out["attention_mask"] = torch.ones(len(batch), 3)
@@ -225,6 +227,86 @@ class BackendTests(unittest.TestCase):
         self.assertIn("30.5 s", msg)
         self.assertIn("--chunk 25", msg)
         self.assertEqual(len(b.model.generate_calls), n_calls)  # refused before any decoding
+
+    def test_lead_in_prepended_before_feature_extractor(self):
+        b = make(batch_size=2)
+        pieces = [piece(1), piece(2), np.full(8000, 3.0, dtype=np.float32)]
+        out = b.transcribe(pieces, "Italian")  # code defaults: lead-in only
+        self.assertEqual(out, ["text1", "text2", "text3"])  # order and content preserved
+        n_lead = round(torch_whisper.LEAD_IN_S * config.SAMPLE_RATE)
+        self.assertEqual(torch_whisper.LEAD_IN_S, 0.05)
+        self.assertEqual(n_lead, 800)
+        got = [x for batch in b.processor.feature_extractor.batches for x in batch]
+        self.assertEqual([len(x) for x in got], [16000 + n_lead, 16000 + n_lead, 8000 + n_lead])
+        for x, p in zip(got, pieces):
+            self.assertEqual(x.dtype, np.float32)
+            self.assertTrue(np.all(x[:n_lead] == 0))
+            np.testing.assert_array_equal(x[n_lead:], p)  # fade off: the piece itself is untouched
+        self.assertEqual(len(pieces[0]), 16000)  # caller's arrays are not modified
+
+    def test_lead_in_and_fade_read_at_call_time(self):
+        b = make()
+        with mock.patch.object(torch_whisper, "LEAD_IN_S", 0.1):
+            b.transcribe([piece(1)], "Italian")
+        with mock.patch.object(torch_whisper, "LEAD_IN_S", 0.0):
+            b.transcribe([piece(1)], "Italian")
+        first, second = b.processor.feature_extractor.batches
+        self.assertEqual(len(first[0]), 16000 + 1600)
+        self.assertEqual(len(second[0]), 16000)  # LEAD_IN_S = 0 disables it
+
+    def test_fade_off_by_default(self):
+        self.assertEqual(torch_whisper.LEAD_IN_S, 0.05)
+        self.assertEqual(torch_whisper.FADE_S, 0.0)
+        b = make()
+        b.transcribe([np.full(16000, 2.0, dtype=np.float32)], "Italian")
+        got = b.processor.feature_extractor.batches[0][0]
+        self.assertEqual(len(got), 16000 + 800)
+        self.assertTrue(np.all(got[:800] == 0))
+        self.assertTrue(np.all(got[800:] == 2.0))  # the piece itself is untouched, edges included
+
+    def test_fade_shape_when_on(self):
+        b = make()
+        sr = config.SAMPLE_RATE
+        x = np.full(2 * sr, 2.0, dtype=np.float32)
+        with mock.patch.object(torch_whisper, "FADE_S", 0.05):
+            b.transcribe([x], "Italian")
+        got = b.processor.feature_extractor.batches[0][0]
+        n_lead, n_fade = 800, 800
+        self.assertEqual(len(got), len(x) + n_lead)
+        self.assertTrue(np.all(got[:n_lead] == 0))                     # lead-in is silence, not faded audio
+        body = got[n_lead:]
+        self.assertEqual(body[0], 0.0)                                 # ramp starts at zero ...
+        self.assertAlmostEqual(float(body[n_fade - 1]), 2.0, places=5)  # ... reaches full level after FADE_S
+        self.assertTrue(np.all(np.diff(body[:n_fade]) > 0))            # linear, increasing
+        np.testing.assert_allclose(np.diff(body[:n_fade]), 2.0 / (n_fade - 1), rtol=1e-3)
+        self.assertTrue(np.all(body[n_fade:-n_fade] == 2.0))           # middle untouched
+        np.testing.assert_allclose(body[-n_fade:], body[:n_fade][::-1])  # fade-out mirrors fade-in
+        self.assertEqual(body[-1], 0.0)
+        self.assertTrue(np.all(x == 2.0))                              # caller's array not modified
+
+    def test_fade_longer_than_half_the_piece_is_clamped(self):
+        b = make()
+        x = np.ones(1000, dtype=np.float32)
+        with mock.patch.object(torch_whisper, "FADE_S", 0.05):  # 800 samples each side > 500
+            b.transcribe([x], "Italian")
+        body = b.processor.feature_extractor.batches[0][0][800:]
+        self.assertEqual(len(body), 1000)
+        self.assertTrue(np.all(np.isfinite(body)) and body.max() <= 1.0 and body.min() >= 0.0)
+
+    def test_refusal_uses_original_length_not_padded(self):
+        b = make()
+        sr = config.SAMPLE_RATE
+        # 29.99 s fits; with the lead-in it is 30.04 s, which must NOT be refused
+        near = np.ones(int(29.99 * sr), dtype=np.float32)
+        self.assertEqual(b.transcribe([near], "Italian"), ["text1"])
+        self.assertEqual(len(b.processor.feature_extractor.batches[-1][0]), len(near) + 800)
+        # 30.5 s is refused although 30.5 + 0.05 is longer still, and the message reports the original 30.5 s
+        n_calls = len(b.model.generate_calls)
+        with self.assertRaises(ValueError) as cm:
+            b.transcribe([np.ones(int(30.5 * sr), dtype=np.float32)], "Italian")
+        self.assertIn("30.5 s", str(cm.exception))
+        self.assertNotIn("30.6 s", str(cm.exception))
+        self.assertEqual(len(b.model.generate_calls), n_calls)
 
     def test_attention_mask_only_when_provided(self):
         b = make(mask=False)
