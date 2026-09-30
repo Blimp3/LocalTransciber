@@ -8,10 +8,14 @@ import json
 import math
 import os
 import sys
+import tempfile
 import time
 
 from . import config, devices, precheck
 from .devices import SetupError
+from .textutil import backup_name, fmt_time, sync, sync_copy
+
+SAVE_RETRY_SECONDS = 0.5  # between the 3 attempts to put the finished transcript in place (Windows: file in use)
 
 
 def _chunk_seconds(text):
@@ -39,31 +43,156 @@ def _check_distinct_outputs(files, out_dir):
         seen[out] = f
 
 
-def _write_atomic(path, text):
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(text)
-    os.replace(tmp, path)
+def _check_inputs_and_folders(files, out_dir):
+    """Before the model loads: every input exists and every output folder can really be written."""
+    missing = [f for f in files if not os.path.isfile(f)]
+    if missing:
+        raise SetupError("File not found: " + ", ".join(missing))
+    for folder in dict.fromkeys(os.path.dirname(_out_path(f, out_dir)) for f in files):
+        try:
+            os.makedirs(folder, exist_ok=True)
+            with tempfile.TemporaryFile(dir=folder):  # deleted by the system on close: no remove to fail on Windows
+                pass
+        except OSError as e:
+            raise SetupError(f"Cannot write in the folder {folder} ({e}). Use --out-dir with a folder that can be "
+                             "written, or copy the recording to such a folder.") from e
 
 
-def _keep_previous(out_path, new_text):
-    """If out_path holds a different transcript, move it to <stem>.bak-YYYYMMDD-HHMMSS.md and say so."""
+def _remove(path):
     try:
-        with open(out_path, encoding="utf-8") as f:
-            old = f.read()
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _write_tmp(path, text):
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+            sync(f)
+    except BaseException:
+        _remove(tmp)
+        raise
+    return tmp
+
+
+def _write_atomic(path, text):
+    tmp = _write_tmp(path, text)
+    try:
+        os.replace(tmp, path)
+    except BaseException:
+        _remove(tmp)
+        raise
+
+
+def _write_new(path, text):
+    """Write a file that does not exist yet, directly: no rename for another program to block."""
+    f = open(path, "x", encoding="utf-8", newline="\n")
+    try:
+        with f:
+            f.write(text)
+            sync(f)
+    except BaseException:
+        _remove(path)
+        raise
+
+
+def _differs(path, text):
+    """True if `path` exists and holds something other than `text`."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read() != text
     except FileNotFoundError:
-        return
+        return False
     except UnicodeDecodeError:
-        old = None
-    if old == new_text:
-        return
-    stem = os.path.splitext(out_path)[0] + ".bak-" + time.strftime("%Y%m%d-%H%M%S")
-    bak, n = stem + ".md", 1
-    while os.path.exists(bak):
-        n += 1
-        bak = f"{stem}-{n}.md"
-    os.replace(out_path, bak)
-    print(f"  previous transcript kept as {bak}")
+        return True
+
+
+def _put_in_place(tmp, out_path, text):
+    """`tmp` holds the new text: copy a different previous transcript to its backup name, then put `tmp` in place
+    (3 attempts). out_path is never moved away, so it always holds the old or the new text. Returns the backup path
+    or None; if every attempt fails the backup copy is removed again."""
+    bak = None
+    for attempt in range(3):
+        try:
+            if bak is None and _differs(out_path, text):
+                b = backup_name(out_path)
+                try:
+                    sync_copy(out_path, b)
+                except BaseException:
+                    _remove(b)
+                    raise
+                bak = b
+            os.replace(tmp, out_path)
+            return bak
+        except OSError:
+            if attempt == 2:
+                if bak:
+                    _remove(bak)  # out_path still holds the previous transcript
+                raise
+            time.sleep(SAVE_RETRY_SECONDS)
+
+
+def _save_transcript(out_path, text):
+    """Save `text` as out_path; the previous transcript keeps its name until the new one replaces it. If out_path
+    cannot be replaced, save a free <stem>.new-<time>.md next to it, else in the home folder. Returns the path
+    written; raises if every place failed."""
+    try:
+        tmp = _write_tmp(out_path, text)
+        try:
+            bak = _put_in_place(tmp, out_path, text)
+        except BaseException:
+            _remove(tmp)
+            raise
+    except OSError as e:
+        err = why = e
+    else:
+        if bak:
+            print(f"  previous transcript kept as {bak}")
+        return out_path
+    for folder in (os.path.dirname(out_path), os.path.expanduser("~")):
+        alt = backup_name(os.path.join(folder, os.path.basename(out_path)), "new")
+        try:
+            _write_new(alt, text)
+        except OSError as e:
+            why = e
+            continue
+        print(f"  [note] could not replace {out_path} ({err}); is it open in another program? "
+              f"The transcript was saved as {alt} instead.")
+        return alt
+    raise why
+
+
+def _partial_writer(out_path):
+    """(path, write): write(text) keeps the text so far in <stem>.partial.md. A failure prints one note; the next
+    write tries again (on Windows another program can hold the file for a moment)."""
+    path = os.path.splitext(out_path)[0] + ".partial.md"
+    state = {"noted": False}
+
+    def write(text):
+        if text.strip():
+            try:
+                _write_atomic(path, text + "\n")
+            except Exception as e:  # a partial file is a courtesy, never a reason to stop
+                if not state["noted"]:
+                    state["noted"] = True
+                    print(f"  [note] cannot keep the part transcribed so far in {path} ({e}); "
+                          "trying again with the next pieces.")
+
+    return path, write
+
+
+def _say_partial(path):
+    if os.path.exists(path):
+        print(f"  the part transcribed so far is in {path}")
+
+
+def _format_turns(turns):
+    from .diarize import first_appearance_names
+
+    names = first_appearance_names(turns)
+    return "\n\n".join(f"[{fmt_time(a)}] {names[s]}: {t}" for a, s, t in turns if t)
 
 
 def build_parser():
@@ -124,6 +253,9 @@ def _explain_load_error(e, repo):
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):  # a console that cannot show a character must not fail a print mid-save
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     args = build_parser().parse_args(argv)
     try:
         return run(args)
@@ -168,6 +300,7 @@ def _pin_gpu(saved):
 
 def run(args):
     _check_distinct_outputs(args.files, args.out_dir)
+    _check_inputs_and_folders(args.files, args.out_dir)
     saved = _saved_choice(args)
     _pin_gpu(saved)
     notes = []
@@ -216,6 +349,8 @@ def run(args):
             print(f"\n[skip] {name}: could not read audio ({e})")
             failed += 1
             continue
+        out_path = _out_path(path, args.out_dir)
+        partial_path, write_partial = _partial_writer(out_path)
         try:
             duration = len(wav) / config.SAMPLE_RATE
             print(f"\n{name}: {duration / 60:.1f} min of audio, transcribing...", flush=True)
@@ -228,40 +363,48 @@ def run(args):
 
                 corrector = Corrector()
             if args.speakers:
-                from .diarize import diarize, first_appearance_names, fmt_time, transcribe_turns
+                from .diarize import diarize, transcribe_turns
 
                 runs = diarize(wav, n_speakers=args.speakers, device=devices.diarization_device(device))
                 b = get_backend()  # first file: loaded after the speaker model is released (8 GB Macs)
-                turns = transcribe_turns(b, wav, runs, language, context=args.context, progress=_progress())
-                names = first_appearance_names(turns)
-                text = "\n\n".join(f"[{fmt_time(a)}] {names[s]}: {t}" for a, s, t in turns if t)
+                turns = transcribe_turns(b, wav, runs, language, context=args.context, progress=_progress(),
+                                         partial=lambda ts: write_partial(_format_turns(ts)))
+                text = _format_turns(turns)
             else:
                 text = transcribe_wav(get_backend(), wav, language, args.context, args.chunk, _progress(), paragraphs,
-                                      corrector)
+                                      corrector, partial=write_partial)
             elapsed = time.perf_counter() - start
+            if not text.strip():
+                print(f"\n[warn] {name}: no speech was recognised (silent recording?); nothing was written")
+                failed += 1
+                continue
             audio_total += duration
             time_total += elapsed
 
-            out_path = _out_path(path, args.out_dir)
-            os.makedirs(os.path.dirname(out_path), exist_ok=True)
-            _keep_previous(out_path, text + "\n")
-            _write_atomic(out_path, text + "\n")
-            side = os.path.splitext(out_path)[0] + ".review.json"
+            written = _save_transcript(out_path, text + "\n")
+            _remove(partial_path)
+            problem = written != out_path
+            side = os.path.splitext(written)[0] + ".review.json"
             if paragraphs is not None:
-                _write_atomic(side, json.dumps({"version": 1, "model": repo, "top_k": config.CONFIDENCE_TOP_K,
-                                                "paragraphs": paragraphs}, ensure_ascii=False))
-                print(f"  confidence -> {side}")
-            else:
                 try:
-                    os.remove(side)  # a sidecar of an older run would not match this transcript
-                except FileNotFoundError:
-                    pass
+                    _write_atomic(side, json.dumps({"version": 1, "model": repo, "top_k": config.CONFIDENCE_TOP_K,
+                                                    "paragraphs": paragraphs}, ensure_ascii=False))
+                    print(f"  confidence -> {side}")
+                except Exception as e:  # the transcript is saved; only its review data is missing
+                    _remove(side)  # an older one would not match the new transcript
+                    print(f"  [note] could not write {side} ({e}); the transcript is saved without it.")
+                    problem = True
+            else:
+                _remove(side)  # a sidecar of an older run would not match this transcript
+            failed += problem
             rt = duration / max(elapsed, 1e-6)
-            print(f"  done in {elapsed:.0f}s ({rt:.{0 if rt >= 10 else 1}f}x realtime) -> {out_path}")
-        except SetupError:
+            print(f"  done in {elapsed:.0f}s ({rt:.{0 if rt >= 10 else 1}f}x realtime) -> {written}")
+        except (SetupError, KeyboardInterrupt):
+            _say_partial(partial_path)
             raise
         except Exception as e:
             print(f"\n[fail] {name}: {type(e).__name__}: {e}")
+            _say_partial(partial_path)
             failed += 1
             continue
 
@@ -276,7 +419,7 @@ def run(args):
         if rss is not None:
             print(f"  peak process memory {rss:.2f} GB")
     if failed:
-        print(f"\n{failed} of {len(args.files)} files failed")
+        print(f"\n{failed} of {len(args.files)} files had problems (see the notes above)")
     return 1 if failed else 0
 
 

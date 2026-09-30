@@ -7,7 +7,10 @@ backends cut and clean the audio in exactly the same way, without the Mac needin
 `qwen-asr` and its heavy dependencies.
 """
 import math
+import os
 import re
+import shutil
+import time
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -211,6 +214,36 @@ def fmt_time(s):
     """Seconds -> hh:mm:ss."""
     s = int(s)
     return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
+
+
+def sync(f):
+    """Push a written file to the disk before a rename relies on it (after a power cut an unsynced file can come back
+    empty or full of zero bytes). A file system without fsync is not an error."""
+    f.flush()
+    try:
+        os.fsync(f.fileno())
+    except OSError:
+        pass
+
+
+def sync_copy(src, dst):
+    """shutil.copy2, then the copy is pushed to the disk too (best effort: Windows needs a writable handle)."""
+    shutil.copy2(src, dst)
+    try:
+        with open(dst, "rb+") as f:
+            os.fsync(f.fileno())
+    except OSError:
+        pass
+
+
+def backup_name(md_path, kind="bak"):
+    """A free "<stem>.<kind>-YYYYMMDD-HHMMSS[-n].md" next to md_path."""
+    stem = os.path.splitext(md_path)[0] + f".{kind}-" + time.strftime("%Y%m%d-%H%M%S")
+    bak, n = stem + ".md", 1
+    while os.path.exists(bak):
+        n += 1
+        bak = f"{stem}-{n}.md"
+    return bak
 
 
 def group_words(tokens, text):

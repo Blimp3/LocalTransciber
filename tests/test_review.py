@@ -26,6 +26,10 @@ class ParseJoin(unittest.TestCase):
         for t in (PLAIN, SPEAKERS, OLD):
             self.assertEqual(join_md(parse_md(t)), t)
 
+    def test_crlf(self):
+        ps = parse_md("[00:00:00] a\r\nb\r\n\r\n[00:00:05] c\r\n")
+        self.assertEqual([p["text"] for p in ps], ["a\nb", "c"])
+
     def test_start(self):
         p = parse_md("[01:02:05] ciao")[0]
         self.assertEqual((p["start"], p["stamp"], p["text"]), (3725, "01:02:05", "ciao"))
@@ -97,11 +101,96 @@ class Server(unittest.TestCase):
         port = self.server.server_address[1]
         self.assertEqual(self.req(headers={"Host": f"localhost:{port}"}).status, 200)
 
+    def save(self, text="x", version=None):
+        body = json.dumps([{"stamp": None, "text": text}]).encode()
+        return self.req("save", data=body, headers={"X-Md-Version": version} if version is not None else {})
+
+    def read(self, path=None):
+        with open(path or self.md, encoding="utf-8") as f:
+            return f.read()
+
+    def baks(self):
+        return [n for n in os.listdir(self.dir.name) if ".bak-" in n]
+
+    def test_same_version_saves_without_backup(self):
+        v = self.req("transcript.json").headers["X-Md-Version"]
+        r = self.save("uno", v)
+        j = json.load(r)
+        self.assertEqual((r.status, j["ok"], j["backup"]), (200, True, None))
+        self.assertEqual(self.save("due", j["version"]).status, 200)
+        self.assertEqual((self.read(), self.baks()), ("due\n", []))
+
+    def test_stale_version_keeps_disk_copy(self):
+        v = self.req("transcript.json").headers["X-Md-Version"]
+        with open(self.md, "w", encoding="utf-8") as f:
+            f.write("scritto da un altro processo, più lungo\n")
+        j = json.load(self.save("mio", v))
+        self.assertEqual(self.read(), "mio\n")
+        self.assertEqual(self.baks(), [j["backup"]])
+        self.assertEqual(self.read(os.path.join(self.dir.name, j["backup"])), "scritto da un altro processo, più lungo\n")
+
+    def test_missing_header_is_stale(self):
+        j = json.load(self.save("mio"))
+        self.assertEqual(self.read(os.path.join(self.dir.name, j["backup"])), PLAIN)
+        self.assertEqual(self.read(), "mio\n")
+
+    def test_md_gone_saves_without_backup(self):
+        os.remove(self.md)
+        self.assertEqual(json.load(self.save("mio", "1-1"))["backup"], None)
+        self.assertEqual(self.read(), "mio\n")
+
+    def test_failed_replace_is_clean(self):
+        with mock.patch("os.replace", side_effect=PermissionError("open elsewhere")):
+            self.assertEqual(self.save("x", self.req("transcript.json").headers["X-Md-Version"]).code, 500)
+        self.assertEqual((self.read(), os.listdir(self.dir.name)), (PLAIN, ["r.md"]))
+
+    def test_failed_backup_does_not_overwrite(self):
+        with mock.patch("shutil.copy2", side_effect=OSError("disk full")):
+            self.assertEqual(self.save("x").code, 500)
+        self.assertEqual((self.read(), os.listdir(self.dir.name)), (PLAIN, ["r.md"]))
+
+    def test_failed_save_after_a_backup_leaves_nothing(self):
+        with mock.patch("os.replace", side_effect=PermissionError("open elsewhere")):
+            self.assertEqual(self.save("x").code, 500)
+        self.assertEqual((self.read(), os.listdir(self.dir.name)), (PLAIN, ["r.md"]))
+
+    def test_half_written_backup_removed(self):
+        def half(src, dst):
+            with open(dst, "w") as f:
+                f.write("[00:00")
+            raise OSError("disk full")
+
+        with mock.patch("shutil.copy2", half):
+            self.assertEqual(self.save("x").code, 500)
+        self.assertEqual(os.listdir(self.dir.name), ["r.md"])
+
+    def test_saved_text_and_backup_on_disk_before_the_swap(self):
+        events, real_fsync, real_replace = [], os.fsync, os.replace
+
+        def fsync(fd):
+            events.append(("synced", os.fstat(fd).st_ino))
+            real_fsync(fd)
+
+        def replace(a, b):
+            events.append(("replaced", os.stat(a).st_ino, b))
+            real_replace(a, b)
+
+        with mock.patch("os.fsync", fsync), mock.patch("os.replace", replace):
+            j = json.load(self.save("mio"))
+        (swap,) = [i for i, e in enumerate(events) if e[0] == "replaced" and e[2] == self.md]
+        self.assertIn(("synced", events[swap][1]), events[:swap])
+        self.assertIn(("synced", os.stat(os.path.join(self.dir.name, j["backup"])).st_ino), events[:swap])
+
+    def test_file_system_without_fsync_still_saves(self):
+        with mock.patch("os.fsync", side_effect=OSError(22, "Invalid argument")):
+            self.assertEqual(self.save("mio").status, 200)
+        self.assertEqual(self.read(), "mio\n")
+
     def test_tmp_name_has_pid(self):
         seen = []
         real = os.replace
         with mock.patch("os.replace", side_effect=lambda a, b: (seen.append(a), real(a, b))):
-            self.req("save", data=b'[{"stamp": null, "text": "x"}]')
+            self.save("x", self.req("transcript.json").headers["X-Md-Version"])
         self.assertEqual(seen, [f"{self.md}.{os.getpid()}.tmp"])
         self.assertEqual(os.listdir(self.dir.name), ["r.md"])
 
@@ -115,6 +204,7 @@ const el = id => els[id] || (els[id] = {id, textContent: '', querySelectorAll: (
 const ctx = {document: {getElementById: el}, addEventListener: (t, f) => listeners[t] = f, Date,
   fetch: (u, o) => u === 'save' ? new Promise(res => { bodies.push(JSON.parse(o.body)[0].text); pending.push(res); }) : Promise.reject(0)};
 vm.createContext(ctx); vm.runInContext(process.argv[1], ctx);
+const okay = {ok: true, json: async () => ({ok: true, version: 'v', backup: null})};
 const tick = () => new Promise(r => setImmediate(r));
 (async () => {
   const s1 = ctx.save(); await tick();
@@ -123,8 +213,8 @@ const tick = () => new Promise(r => setImmediate(r));
   visible = 'newer edit'; vm.runInContext('markDirty()', ctx); const s2 = ctx.save();
   await tick();
   const started = pending.length;                 // the second request must wait for the first
-  pending[0]({ok: true}); await s1; await tick();
-  pending[1]({ok: true}); await s2;
+  pending[0](okay); await s1; await tick();
+  pending[1](okay); await s2;
   console.log(JSON.stringify({warned, started, bodies, dirty: vm.runInContext('dirty', ctx), saving: vm.runInContext('saving', ctx)}));
 })();
 """
@@ -140,6 +230,51 @@ class SaveRace(unittest.TestCase):
         self.assertEqual(r["started"], 1)
         self.assertEqual(r["bodies"], ["older edit", "newer edit"])
         self.assertEqual((r["dirty"], r["saving"]), (False, 0))
+
+
+NODE_PAGE = """
+const vm = require('vm');
+let pending = [], sent = [];
+const els = {};
+const el = id => els[id] || (els[id] = {id, textContent: '', querySelectorAll: () => [{dataset: {stamp: '00:00:00'},
+  querySelector: () => ({innerText: 'testo'})}]});
+const ctx = {document: {getElementById: el}, addEventListener: () => {}, Date,
+  fetch: (u, o) => u === 'save' ? new Promise(res => { sent.push(o.headers['X-Md-Version']); pending.push(res); })
+    : Promise.resolve({ok: true, headers: {get: n => n === 'X-Md-Version' ? 'v1' : null}, json: async () => []})};
+vm.createContext(ctx); vm.runInContext(process.argv[1], ctx);
+const tick = () => new Promise(r => setImmediate(r));
+const answer = j => ({ok: true, json: async () => j});
+const out = [];
+async function step(reply) {
+  const s = ctx.save(); await tick();
+  pending.shift()(reply); await s;
+  out.push({status: els.status.textContent, dirty: vm.runInContext('dirty', ctx)});
+}
+(async () => {
+  await tick(); await tick();
+  await step(answer({ok: true, version: 'v2', backup: null}));
+  await step({ok: false, status: 500});
+  await step(answer({ok: true, version: 'v3', backup: 'r.bak-20260930-101010.md'}));
+  await step({ok: false, status: 400});
+  console.log(JSON.stringify({sent, out}));
+})();
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not installed")
+class PageVersion(unittest.TestCase):
+    def test_version_header_messages_and_dirty(self):
+        script = PAGE.split("<script>", 1)[1].split("</script>", 1)[0]
+        r = json.loads(subprocess.run(["node", "-e", NODE_PAGE, script], capture_output=True, text=True, timeout=30,
+                                      check=True).stdout)
+        self.assertEqual(r["sent"], ["v1", "v2", "v2", "v3"])
+        (ok, locked, backup, bad) = r["out"]
+        self.assertTrue(ok["status"].startswith("Salvato ") and not ok["dirty"])
+        self.assertIn("aperto in un altro programma", locked["status"])
+        self.assertTrue(locked["dirty"])
+        self.assertIn("conservata come r.bak-20260930-101010.md", backup["status"])
+        self.assertFalse(backup["dirty"])
+        self.assertEqual((bad["status"], bad["dirty"]), ("Errore nel salvataggio", True))
 
 
 class Suggestions(Server):

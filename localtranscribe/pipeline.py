@@ -21,11 +21,13 @@ def transcribe_pieces(
     context: str = "",
     progress: Optional[Callable[[int, int], None]] = None,
     records: Optional[list] = None,
+    partial: Optional[Callable[[List[str]], None]] = None,
 ) -> List[str]:
     """One cleaned text per piece (context echo removed). Runs in slices of a few batches so that
     `progress(done, total)` can be reported; slicing on batch boundaries keeps the batches, and
     therefore the results, the same as one big call. With `records` (a list) and a backend that recorded
-    confidence, one {"aligned", "tokens"} per returned text is appended to it."""
+    confidence, one {"aligned", "tokens"} per returned text is appended to it. `partial(texts_so_far)` is called after
+    each slice."""
     texts: List[str] = []
     step = max(1, backend.batch_size) * 4
     for i in range(0, len(pieces), step):
@@ -35,6 +37,8 @@ def transcribe_pieces(
         if records is not None:
             records.extend(dict(r, aligned=r["aligned"] and c == t)
                            for r, t, c in zip(backend.last_records, raw, cleaned))
+        if partial:
+            partial(texts)
         if progress:
             progress(len(texts), len(pieces))
     return texts
@@ -75,14 +79,18 @@ def add_candidates(backend, piece, language, context, para):
             w["cands"] = [{"w": t, "p": p} for t, p in sorted(best.items(), key=lambda x: -x[1])]
 
 
+def _join_paragraphs(texts, chunks):
+    return "\n\n".join(f"[{fmt_time(o)}] {t}" for t, (_, o) in zip(texts, chunks) if t)
+
+
 def transcribe_wav(backend, wav, language, context="", chunk_seconds=config.CHUNK_SECONDS, progress=None,
-                   paragraphs=None, corrector=None) -> str:
+                   paragraphs=None, corrector=None, partial=None) -> str:
     """Whole recording -> text, one "[hh:mm:ss] ..." paragraph per ~20 s piece. With `paragraphs` (a list), one
     {"text", "offset", "aligned", "tokens", "words"} per paragraph is appended to it (needs a backend with
     record_confidence). "words" is one {"w", "p", "i": [first, last piece], "unsure": True if p is low} per word of
     `text.split()`, or None when the pieces do not line up with the text. Unsure words also get "cands"
     (see add_candidates) when the backend has word_continuations. `corrector(para)`, if given, then adds "suggest"
-    to words (correct.Corrector); it never changes the text."""
+    to words (correct.Corrector); it never changes the text. `partial(text_so_far)` is called after each slice."""
     records = [] if paragraphs is not None else None
     chunks = split_wav(wav, chunk_seconds)
     cands_ok = True
@@ -113,12 +121,15 @@ def transcribe_wav(backend, wav, language, context="", chunk_seconds=config.CHUN
         texts = []
         for piece, o in chunks:
             texts += transcribe_pieces(backend, [piece], language, context, records=records)
+            if partial:
+                partial(_join_paragraphs(texts, chunks))
             add_paragraph(piece, texts[-1], o, records[-1])
             if progress:
                 progress(len(texts), len(chunks))
     else:
-        texts = transcribe_pieces(backend, [p for p, _ in chunks], language, context, progress, records)
+        texts = transcribe_pieces(backend, [p for p, _ in chunks], language, context, progress, records,
+                                  (lambda ts: partial(_join_paragraphs(ts, chunks))) if partial else None)
         if paragraphs is not None:
             for (piece, o), t, r in zip(chunks, texts, records):
                 add_paragraph(piece, t, o, r)
-    return "\n\n".join(f"[{fmt_time(o)}] {t}" for t, (_, o) in zip(texts, chunks) if t)
+    return _join_paragraphs(texts, chunks)

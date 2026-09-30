@@ -179,18 +179,9 @@ def diarize(wav, n_speakers=2, device="cpu", reference=None):
     return [(a * FRAME, (b + 1) * FRAME, int(lab)) for a, b, lab in runs]
 
 
-def transcribe_turns(backend, wav, runs, language, context="", max_piece=20.0, pad=0.15, progress=None):
-    """Transcribe each run through the backend, then merge consecutive runs of the same speaker into turns.
-    `pad` overlaps neighbouring runs on purpose: run edges land 0.1-0.45 s off the true change, and on two-voice
-    FLEURS dialogues clamping the pad to the gap midpoint lost words (pooled WER 5.28% -> 5.93%) and removed no
-    duplicates."""
-    pieces, owner = [], []
-    for k, (a, b, _) in enumerate(runs):
-        seg = wav[max(0, int((a - pad) * SR)):int((b + pad) * SR)]
-        for chunk, _ in split_audio_into_chunks(seg, SR, max_chunk_sec=max_piece):
-            pieces.append(chunk)
-            owner.append(k)
-    results = transcribe_pieces(backend, pieces, language, context, progress) if pieces else []
+def _merge_turns(runs, owner, results):
+    """Texts of the pieces done so far (`results`, `owner[i]` = the run of piece i) -> [(start_s, speaker, text)],
+    consecutive runs of the same speaker merged."""
     texts = [""] * len(runs)
     for k, text in zip(owner, results):
         texts[k] = (texts[k] + " " + text.strip()).strip()
@@ -204,6 +195,24 @@ def transcribe_turns(backend, wav, runs, language, context="", max_piece=20.0, p
         else:
             turns.append([a, spk, text])
     return [tuple(t) for t in turns]
+
+
+def transcribe_turns(backend, wav, runs, language, context="", max_piece=20.0, pad=0.15, progress=None, partial=None):
+    """Transcribe each run through the backend, then merge consecutive runs of the same speaker into turns.
+    `partial(turns_so_far)` is called after each slice of pieces.
+    `pad` overlaps neighbouring runs on purpose: run edges land 0.1-0.45 s off the true change, and on two-voice
+    FLEURS dialogues clamping the pad to the gap midpoint lost words (pooled WER 5.28% -> 5.93%) and removed no
+    duplicates."""
+    pieces, owner = [], []
+    for k, (a, b, _) in enumerate(runs):
+        seg = wav[max(0, int((a - pad) * SR)):int((b + pad) * SR)]
+        for chunk, _ in split_audio_into_chunks(seg, SR, max_chunk_sec=max_piece):
+            pieces.append(chunk)
+            owner.append(k)
+    results = transcribe_pieces(backend, pieces, language, context, progress,
+                                partial=(lambda rs: partial(_merge_turns(runs, owner, rs))) if partial else None
+                                ) if pieces else []
+    return _merge_turns(runs, owner, results)
 
 
 def first_appearance_names(turns, prefix="Parlante"):

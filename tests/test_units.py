@@ -350,6 +350,19 @@ class ChunkerGuardTests(unittest.TestCase):
         return [round(o, 3) for _, o in ns["split_audio_into_chunks"](wav, SR, max_chunk_sec)]
 
 
+class BackupNameTests(unittest.TestCase):
+    def test_free_name_next_to_the_transcript(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(textutil.time, "strftime", lambda f: "20260930-101010"):
+            md = os.path.join(d, "a.md")
+            first = textutil.backup_name(md)
+            self.assertEqual(first, os.path.join(d, "a.bak-20260930-101010.md"))
+            open(first, "w").close()
+            self.assertEqual(textutil.backup_name(md), os.path.join(d, "a.bak-20260930-101010-2.md"))
+            self.assertEqual(textutil.backup_name(md, "new"), os.path.join(d, "a.new-20260930-101010.md"))
+
+
 class DiarizeHelpersTests(unittest.TestCase):
     def test_smooth_absorbs_short_runs(self):
         from localtranscribe import diarize

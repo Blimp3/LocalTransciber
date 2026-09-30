@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import numpy as np
 
 from . import config
-from .textutil import fmt_time
+from .textutil import backup_name, fmt_time, sync, sync_copy
 
 STAMP = re.compile(r"^\[(\d{2,}):(\d{2}):(\d{2})\] ?")
 MAX_BODY = 20 * 1024 * 1024
@@ -27,7 +27,7 @@ MAX_BODY = 20 * 1024 * 1024
 def parse_md(text):
     """Paragraphs of a transcript .md: [{"start": seconds or None, "stamp": "hh:mm:ss" or None, "text": str}]."""
     out = []
-    for block in re.split(r"\n\s*\n", text.strip()):
+    for block in re.split(r"\n\s*\n", text.replace("\r\n", "\n").strip()):
         m = STAMP.match(block)
         if m:
             h, mi, s = (int(g) for g in m.groups())
@@ -35,6 +35,10 @@ def parse_md(text):
         elif block:
             out.append({"start": None, "stamp": None, "text": block})
     return out
+
+
+def md_version(st):
+    return f"{st.st_mtime_ns}-{st.st_size}"
 
 
 def join_md(paragraphs):
@@ -119,10 +123,11 @@ def make_server(audio_bytes, md_path, title, port=0):
             elif r == "transcript.json":
                 try:
                     with open(md_path, encoding="utf-8") as f:
+                        version = md_version(os.fstat(f.fileno()))
                         data = add_suggestions(parse_md(f.read()), sidecar)
                 except OSError:
                     return self.send(500, b"cannot read the .md file")
-                self.send(200, json.dumps(data).encode(), "application/json")
+                self.send(200, json.dumps(data).encode(), "application/json", X_Md_Version=version)
             elif r == "audio.wav":
                 self.audio()
             else:
@@ -161,15 +166,34 @@ def make_server(audio_bytes, md_path, title, port=0):
                 return self.send(400, b"bad request")
             if not text.strip():
                 return self.send(400, b"empty transcript")
-            tmp = f"{md_path}.{os.getpid()}.tmp"
+            tmp, backup = f"{md_path}.{os.getpid()}.tmp", None
             try:
                 with lock:
-                    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
-                        f.write(text)
-                    os.replace(tmp, md_path)
+                    try:
+                        stale = md_version(os.stat(md_path)) != self.headers.get("X-Md-Version")
+                    except OSError:  # no .md on disk: nothing to keep
+                        stale = False
+                    try:
+                        if stale:  # changed on disk since the page loaded it: keep that version too
+                            backup = backup_name(md_path)
+                            sync_copy(md_path, backup)
+                        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+                            f.write(text)
+                            sync(f)
+                        os.replace(tmp, md_path)
+                    except OSError:  # the .md is untouched: leave nothing else behind
+                        for leftover in (tmp, backup):
+                            try:
+                                if leftover:
+                                    os.remove(leftover)
+                            except OSError:
+                                pass
+                        raise
+                    version = md_version(os.stat(md_path))
             except OSError:
                 return self.send(500, b"cannot save")
-            self.send(200, b'{"ok": true}', "application/json")
+            answer = {"ok": True, "version": version, "backup": backup and os.path.basename(backup)}
+            self.send(200, json.dumps(answer).encode(), "application/json")
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     return server, f"http://127.0.0.1:{server.server_address[1]}{base}"
@@ -257,7 +281,7 @@ mark{background:#ffe27a;color:#1d1d1f;border-radius:3px;padding:0 2px}
 <script>
 const $ = id => document.getElementById(id);
 const audio = $("a"), status = $("status"), box = $("text");
-let dirty = false, saving = 0, chain = Promise.resolve();
+let dirty = false, saving = 0, version = "", chain = Promise.resolve();
 function setStatus(s) { status.textContent = s; }
 function markDirty() { dirty = true; setStatus("Modifiche non salvate"); }
 function countOpen() {
@@ -273,10 +297,17 @@ async function doSave() {
   try {
     const body = JSON.stringify(paragraphs());
     dirty = false;
-    const r = await fetch("save", {method: "POST", body});
+    const r = await fetch("save", {method: "POST", body, headers: {"X-Md-Version": version}});
     if (!r.ok) throw new Error(r.status);
-    if (!dirty) setStatus("Salvato " + new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}));
-  } catch (e) { dirty = true; setStatus("Errore nel salvataggio"); }
+    const j = await r.json().catch(() => ({}));
+    if (j.version) version = j.version;
+    if (j.backup) setStatus("Salvato. Il file era cambiato sul disco: la versione che c'era \u00e8 stata conservata come " + j.backup
+      + (dirty ? ". Ci sono nuove modifiche non salvate." : ""));
+    else if (!dirty) setStatus("Salvato " + new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}));
+  } catch (e) {
+    dirty = true;
+    setStatus(e.message === "500" ? "Impossibile salvare: il file .md \u00e8 aperto in un altro programma o la cartella non \u00e8 scrivibile. Le modifiche restano in questa pagina: riprova." : "Errore nel salvataggio");
+  }
   finally { saving--; }
 }
 function show(items) {
@@ -333,7 +364,7 @@ function show(items) {
   }
   countOpen();
 }
-fetch("transcript.json").then(r => { if (!r.ok) throw 0; return r.json(); }).then(show)
+fetch("transcript.json").then(r => { if (!r.ok) throw 0; version = r.headers.get("X-Md-Version") || ""; return r.json(); }).then(show)
   .catch(() => { box.textContent = "Impossibile caricare la trascrizione (file .md mancante o illeggibile)."; });
 $("save").onclick = save;
 addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); } });
