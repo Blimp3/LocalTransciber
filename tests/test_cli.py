@@ -165,7 +165,7 @@ class CliTest(unittest.TestCase):
 
     def test_empty_text_keeps_existing_transcript(self):
         wav, md, side = self.p("a.wav"), self.p("a.md"), self.p("a.review.json")
-        open(md, "w").write("HAND REVIEWED\n")
+        open(md, "wb").write(b"HAND REVIEWED\n")
         open(side, "w").write("{}")
         self.assertEqual(run([wav], ["  \n"]), 1)
         self.assertEqual(open(md, "rb").read(), b"HAND REVIEWED\n")
