@@ -355,6 +355,9 @@ repository (the notices are in [`NOTICE`](NOTICE)):
   [`mlx-lm`](https://github.com/ml-explore/mlx-lm) generation loop it includes (MIT, copyright Apple Inc.).
 - `bin/guard-macos-arm64` is compiled from `guard_cli.bend` with [Bend](https://github.com/bendlang/bend)
   (Apache-2.0, copyright HigherOrderCO) and contains Bend's runtime code.
+- `bin/guard-windows-x64.exe` is compiled from the same sources and contains the same Bend runtime code, plus
+  code that [Zig](https://ziglang.org) links in statically (Zig's runtime, MIT; the mingw-w64 C runtime and
+  winpthreads); the details are in [`NOTICE`](NOTICE).
 
 What it downloads and uses:
 

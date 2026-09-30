@@ -22,6 +22,27 @@ Copyright 2026 HigherOrderCO, licensed under the Apache License,
 Version 2.0, and contains Bend's runtime code. The LICENSE file in this
 repository is a copy of that license.
 
+The file bin/guard-windows-x64.exe is compiled from the same
+guard_cli.bend and guard.bend, so it contains the same Bend runtime code
+(Apache License, Version 2.0, see above). Its C code is compiled and
+linked with Zig 0.16.0 (https://ziglang.org) for x86_64-windows-gnu, and
+the executable statically contains parts of these components:
+  - Zig's own compiler_rt and libc code, Copyright (c) Zig contributors,
+    MIT License. It includes math routines ported from musl,
+    Copyright 2005-2020 Rich Felker, et al., MIT License.
+  - The mingw-w64 C runtime (start-up code and printf/strtod support),
+    Copyright 2009-2013 the mingw-w64 project, mostly under the Zope
+    Public License 2.1 or in the public domain; its floating-point
+    conversion is David M. Gay's gdtoa (Copyright 1998-2000 Lucent
+    Technologies, permissive licence in the source files) and its printf
+    core is by Keith Marshall (free of restriction). The full texts are
+    in lib/libc/mingw of the Zig 0.16.0 release.
+  - winpthreads, Copyright 2011-2016 mingw-w64 project and others, MIT
+    licence (text below).
+It is not compiled against LLVM's compiler-rt, and it imports only
+KERNEL32.dll and the Universal C Runtime (api-ms-win-crt-*.dll), which
+are part of Windows and are not distributed here.
+
 ------------------------------------------------------------------------
 mlx-audio and mlx-lm
 
@@ -47,3 +68,32 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+------------------------------------------------------------------------
+Zig, musl and winpthreads (as linked into bin/guard-windows-x64.exe)
+
+MIT License
+
+Copyright (c) Zig contributors
+Copyright 2005-2020 Rich Felker, et al.
+Copyright (c) 2011-2016 mingw-w64 project, Copyright (c) 2015 Intel
+Corporation
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the
+following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+USE OR OTHER DEALINGS IN THE SOFTWARE.
