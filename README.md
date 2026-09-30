@@ -126,9 +126,11 @@ A transcript can take an hour to make and longer to correct, so the program neve
 - **While a recording is being transcribed**, the text done so far is in `<recording>.partial.md` (it appears once
   the first pieces are done, usually within a minute, and grows every few pieces). If the computer crashes, the
   battery dies or you press Ctrl+C, that file stays; it is removed when the transcript is complete.
-- **If the `.md` cannot be replaced** (on Windows: it is open in Word, marked read-only, or an antivirus or sync
-  program is holding it), the program tries three times, then saves the new transcript as `<recording>.new-<date>.md` next to it (or in
-  your home folder if that fails too) and says so. The old transcript is not touched.
+- **If the `.md` cannot be replaced** (on Windows: it is open in Word or in an editor that keeps the file locked,
+  marked read-only, or held by an antivirus or sync program), the program tries three times, then saves the new
+  transcript as `<recording>.new-<date>.md` next to it (or in your home folder if that fails too) and says so. The
+  old transcript is not touched. Tip: close the transcript in your editor before you transcribe the same recording
+  again or save from the review page.
 - **If the model returns no text at all**, nothing is written: the program says that no speech was recognised and
   leaves any existing transcript alone. (On pure silence the speech model can still invent a short phrase; skipping
   silence is on the [roadmap](ROADMAP.md).)
@@ -409,7 +411,8 @@ oppure PC Windows (meglio con scheda video NVIDIA). Circa 5 GB di spazio libero 
 trascrivi di nuovo lo stesso file, il testo precedente non va perso: resta come `<nome>.bak-<data>.md`. Se il
 programma si interrompe a metà (batteria scarica, finestra chiusa), il testo fatto fino a quel punto è in
 `<nome>.partial.md`; se il file `.md` è aperto in un altro programma e non si può sostituire, il nuovo testo viene
-salvato come `<nome>.new-<data>.md`. Per il
+salvato come `<nome>.new-<data>.md` (consiglio: chiudi la trascrizione nell'editor prima di trascrivere di nuovo lo
+stesso file o di salvare dalla pagina di revisione). Per il
 testo unico il programma chiede anche se vuoi i **suggerimenti AI** per le parole incerte: un piccolo modello sul tuo
 Mac propone correzioni (ci vuole circa il 10 % di tempo in più), e nulla cambia finché non le accetti tu.
 
