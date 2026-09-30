@@ -27,7 +27,7 @@ review and correction on top without changing how it is used.
      transcription runs.
   3. **A rule checker accepts or rejects each choice**: only flagged words change, only to one of their candidates,
      no word is added or removed, a rejected choice leaves the word as it was. The rules (`LAWS.bend`) are proven in
-     [Bend](https://github.com/HigherOrderCO/Bend) (`PROOF.bend`) and the checker runs as a native binary.
+     [Bend](https://github.com/bendlang/bend) (`PROOF.bend`) and the checker runs as a native binary.
   4. **You have the final say**: the review page highlights each suggestion; nothing is applied until you accept it
      and save.
   Tuned on 100 FLEURS clips (12 suggestions, 5 fixes, 1 new mistake) and checked unchanged on 200 other clips: 25

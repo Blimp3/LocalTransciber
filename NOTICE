@@ -17,7 +17,7 @@ in localtranscribe/backends/mlx_qwen.py: the decoding loop of mlx-audio
 record each word-piece's probability and to keep the cache.
 
 The file bin/guard-macos-arm64 is compiled from guard_cli.bend and
-guard.bend with Bend 2 (https://github.com/HigherOrderCO/Bend),
+guard.bend with Bend 2 (https://github.com/bendlang/bend),
 Copyright 2026 HigherOrderCO, licensed under the Apache License,
 Version 2.0, and contains Bend's runtime code. The LICENSE file in this
 repository is a copy of that license.

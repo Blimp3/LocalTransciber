@@ -32,7 +32,7 @@ after that everything runs offline on your Apple Silicon Mac, your NVIDIA GPU, o
 - **Word confidence** (Mac). `--confidence` saves each word's probability, flags the unsure ones and gives them
   whole-word alternatives from the speech model itself.
 - **AI suggestions, checked and confirmed** (Mac). `--correct` lets a small local model choose among those
-  alternatives at unsure words. A rule checker, proven correct in [Bend](https://github.com/HigherOrderCO/Bend),
+  alternatives at unsure words. A rule checker, proven correct in [Bend](https://github.com/bendlang/bend),
   rejects anything else, and you accept or reject each suggestion on the review page. Nothing changes on its own.
 - **Review page.** A local page with the editable transcript beside the audio; click a timestamp to jump there.
 - **Never loses a transcript.** A new run keeps the transcript you edited as a backup, a crash or a closed laptop
@@ -275,7 +275,7 @@ Issues and pull requests are welcome. Before opening one: run the unit tests, ke
 possible (new dependencies are a discussion, not a default), and if you touch the chunker, the prompts or the model
 presets, include `benchmark/bench.py` numbers before and after.
 
-The AI suggestions are guarded by a rule checker written in [Bend](https://github.com/HigherOrderCO/Bend):
+The AI suggestions are guarded by a rule checker written in [Bend](https://github.com/bendlang/bend):
 `LAWS.bend` states the rules (the maintainer's specification: propose changes to it in an issue first), `guard.bend`
 is the checker, `PROOF.bend` proves that the checker obeys every rule, and `guard_cli.bend` is the small
 command-line wrapper that Python calls. If you touch any of them, run `bend PROOF.bend` (it must print
@@ -339,7 +339,7 @@ repository (the notices are in [`NOTICE`](NOTICE)):
 - The decoding loop that records word confidence (`_single_recorded` in `localtranscribe/backends/mlx_qwen.py`) is
   adapted from [`mlx-audio`](https://github.com/Blaizzy/mlx-audio) (MIT, copyright Prince Canuma) and the
   [`mlx-lm`](https://github.com/ml-explore/mlx-lm) generation loop it includes (MIT, copyright Apple Inc.).
-- `bin/guard-macos-arm64` is compiled from `guard_cli.bend` with [Bend](https://github.com/HigherOrderCO/Bend)
+- `bin/guard-macos-arm64` is compiled from `guard_cli.bend` with [Bend](https://github.com/bendlang/bend)
   (Apache-2.0, copyright HigherOrderCO) and contains Bend's runtime code.
 
 What it downloads and uses:
