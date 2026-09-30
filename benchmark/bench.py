@@ -2,10 +2,12 @@
 
     python benchmark/bench.py --data benchmark/data/fleurs_it [--model best|light|<repo>] [--device auto]
                               [--n 100] [--batch-size 0] [--chunk 20] [--json out.json] [--hyp-csv hyp.csv]
+                              [--no-silence-gate]
 
 Uses the same pipeline as the command line tool: PyAV decoding, the shared 20-second chunker, the
 selected backend. All pieces of all clips go through the backend together (like a long recording
-would), so batching behaves as in real use. Prints one RESULT line.
+would), so batching behaves as in real use; pieces with no sound at all are skipped as in real use
+(--no-silence-gate sends them too, for an A/B run). Prints one RESULT line.
 """
 import argparse
 import csv
@@ -23,6 +25,8 @@ from localtranscribe.pipeline import split_wav, transcribe_pieces
 
 
 def run(args):
+    if args.no_silence_gate:
+        config.SILENCE_DBFS = None  # transcribe_pieces reads it at call time
     device, repo, batch, mem_gb = devices.resolve_run_config(args.device, args.model, args.batch_size)
     rows = werlib.load_references(args.data, args.n)
     t0 = time.perf_counter()
@@ -43,10 +47,11 @@ def run(args):
             pieces.append(p)
             owner.append(k)
 
-    transcribe_pieces(backend, pieces[:1], language)  # warm-up (kernel compilation, caches); not timed
+    backend.transcribe(pieces[:1], language)  # warm-up (kernel compilation, caches); not timed, never skipped
     backend.reset_peak_memory()
     t0 = time.perf_counter()
-    texts = transcribe_pieces(backend, pieces, language)
+    skipped = []
+    texts = transcribe_pieces(backend, pieces, language, skipped=skipped)
     run_s = time.perf_counter() - t0
 
     hyps = [""] * len(rows)
@@ -62,6 +67,8 @@ def run(args):
         "audio_seconds": round(audio_s, 1), "seconds": round(run_s, 2),
         "xrealtime": round(audio_s / run_s, 2), "rtf": round(run_s / audio_s, 4),
         "wer_percent": round(100 * w_err, 3), "cer_percent": round(100 * c_err, 3),
+        "silence_dbfs": config.SILENCE_DBFS, "skipped_pieces": len(skipped),
+        "skipped_seconds": round(sum(skipped), 1),
         "load_seconds": round(load_s, 2), "decode_seconds": round(decode_s, 2),
         "peak_accelerator_gb": None if peak is None else round(peak, 3),
         "peak_process_gb": None if devices.peak_rss_gb() is None else round(devices.peak_rss_gb(), 3),
@@ -71,7 +78,9 @@ def run(args):
           f"| CER {res['cer_percent']:.2f}% | {len(rows)} clips, {audio_s / 60:.1f} min audio in {run_s:.1f}s "
           f"({res['xrealtime']:.1f}x realtime, RTF {res['rtf']:.3f}) | load {load_s:.1f}s | "
           f"peak accelerator {'n/a' if peak is None else f'{peak:.2f} GB'}"
-          f" | peak process {res['peak_process_gb']} GB", flush=True)
+          f" | peak process {res['peak_process_gb']} GB | silence gate "
+          f"{'off' if config.SILENCE_DBFS is None else f'{config.SILENCE_DBFS} dBFS'}: {len(skipped)} pieces "
+          f"({sum(skipped):.0f} s) skipped", flush=True)
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
             json.dump(res, f, indent=2)
@@ -95,6 +104,8 @@ def main(argv=None):
     ap.add_argument("--language", default=config.DEFAULT_LANGUAGE)
     ap.add_argument("--json", help="write the result as JSON to this file")
     ap.add_argument("--hyp-csv", help="write hypotheses next to references to this CSV")
+    ap.add_argument("--no-silence-gate", action="store_true",
+                    help="send every piece to the model, also pieces with no sound at all (for an A/B run)")
     args = ap.parse_args(argv)
     try:
         run(args)

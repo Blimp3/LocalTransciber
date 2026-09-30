@@ -135,7 +135,7 @@ class HookTests(unittest.TestCase):
         pipeline.group_words = lambda toks, t: [{"w": "ciao", "p": 0.4, "unsure": True}, {"w": "mondo", "p": 0.99}]
         try:
             paras = []
-            text = pipeline.transcribe_wav(FakeBackend(), np.zeros(16000 * 3, dtype=np.float32), "it",
+            text = pipeline.transcribe_wav(FakeBackend(), np.ones(16000 * 3, dtype=np.float32), "it",
                                            paragraphs=paras, corrector=corrector)
         finally:
             pipeline.group_words, pipeline.add_candidates = orig, orig_add

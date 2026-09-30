@@ -11,6 +11,12 @@ DEFAULT_LANGUAGE = "Italian"
 # 15-30 s pieces give 2.4-2.9 % WER, 60 s 3.5 %, 120 s 5.2 %, 300 s 11.7 %). Do not raise.
 CHUNK_SECONDS = 20
 
+# A piece in which no 100 ms reaches this level (RMS, dBFS) is not sent to the speech model: there is nothing to hear,
+# and on such a piece every model invents a phrase ("Non è vero.", "Grazie a tutti."). Measured without a model on 20 s
+# pieces: the quietest of 1,930 speech pieces (FLEURS 300, 1,177 VoxPopuli clips, 12 speeches also after G.711 and
+# Opus 12 kbit/s) reaches -30 dBFS; digital silence after those codecs stays at -81 / -100 dBFS. None sends every piece.
+SILENCE_DBFS = -60
+
 # Tokens the model may generate for one piece (a 20-25 s piece needs ~100-150).
 MAX_NEW_TOKENS = 1024
 

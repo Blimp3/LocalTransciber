@@ -145,6 +145,65 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(all(n <= fake.batch_size * 4 for n, _, _ in fake.calls))
 
 
+class SilenceGateTests(unittest.TestCase):
+    def test_is_silent_levels(self):
+        def square(db, n=SR * 20):  # RMS exactly `db` dBFS
+            return (np.where(np.arange(n) % 2, 1.0, -1.0) * 10 ** (db / 20)).astype(np.float32)
+
+        self.assertTrue(textutil.is_silent(np.zeros(SR * 20, np.float32), SR, -60))
+        self.assertTrue(textutil.is_silent(np.zeros(0, np.float32), SR, -60))
+        self.assertTrue(textutil.is_silent(square(-61), SR, -60))
+        self.assertFalse(textutil.is_silent(square(-59), SR, -60))
+        piece = np.zeros(SR * 20, np.float32)
+        piece[12345:12345 + SR // 10] = square(-50, SR // 10)  # one quiet word of 100 ms, not on a frame boundary
+        self.assertFalse(textutil.is_silent(piece, SR, -60))
+
+    def test_silent_pieces_never_reach_the_backend(self):
+        pieces = [noisy_speechlike(3), np.zeros(SR * 20, np.float32), noisy_speechlike(4),
+                  np.zeros(SR * 10, np.float32)]
+        fake, skipped, seen, parts = FakeBackend(), [], [], []
+        texts = pipeline.transcribe_pieces(fake, pieces, "Italian", progress=lambda d, t: seen.append((d, t)),
+                                           partial=parts.append, skipped=skipped)
+        self.assertEqual(texts, ["3.0s", "", "4.0s", ""])
+        self.assertEqual(fake.calls, [(2, "Italian", "")])
+        self.assertEqual(skipped, [20.0, 10.0])
+        self.assertEqual(seen[-1], (4, 4))
+        self.assertEqual(parts[-1], texts)
+        fake = FakeBackend()
+        self.assertEqual(pipeline.transcribe_pieces(fake, pieces[1::2], "Italian"), ["", ""])
+        self.assertEqual(fake.calls, [])  # nothing to hear, no call at all
+        fake, skipped = FakeBackend(), []
+        with mock.patch.object(config, "SILENCE_DBFS", None):  # read when called, so it can be switched off
+            texts = pipeline.transcribe_pieces(fake, pieces, "Italian", skipped=skipped)
+        self.assertEqual(texts, ["3.0s", "20.0s", "4.0s", "10.0s"])
+        self.assertEqual(skipped, [])
+
+    def test_transcribe_wav_keeps_offsets_and_says_what_it_skipped(self):
+        import contextlib
+        import io
+
+        chunks = [(noisy_speechlike(20), 0.0), (np.zeros(SR * 20, np.float32), 20.0), (noisy_speechlike(20), 40.0)]
+        with mock.patch.object(pipeline, "split_wav", lambda *a: chunks), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            text = pipeline.transcribe_wav(FakeBackend(), None, "Italian")
+        self.assertEqual(text, "[00:00:00] 20.0s\n\n[00:00:40] 20.0s")
+        self.assertEqual(out.getvalue(), "  [note] 20 s had no sound at all (1 piece below -60 dBFS) and were not "
+                                         "transcribed.\n")
+
+    def test_turns_skip_a_silent_run(self):
+        import contextlib
+        import io
+
+        from localtranscribe import diarize
+
+        wav = np.concatenate([noisy_speechlike(5), np.zeros(SR * 10, np.float32), noisy_speechlike(5, seed=1)])
+        runs = [(0.0, 5.0, 0), (6.0, 14.0, 1), (15.0, 20.0, 0)]
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            turns = diarize.transcribe_turns(FakeBackend(texts=["uno", "tre"]), wav, runs, "Italian")
+        self.assertEqual(turns, [(0.0, 0, "uno tre")])
+        self.assertEqual(out.getvalue().count("[note]"), 1)
+
+
 class WerNormalizeTests(unittest.TestCase):
     def test_normalize_strips_timestamps(self):
         from benchmark import wer
@@ -391,7 +450,7 @@ class DiarizeHelpersTests(unittest.TestCase):
         self.assertEqual(diarize.fmt_time(3725), "01:02:05")
         self.assertEqual([textutil.fmt_time(s) for s in (0, 83.9, 3725)], ["00:00:00", "00:01:23", "01:02:05"])
         self.assertEqual(diarize.first_appearance_names([(0, 7, "a"), (1, 3, "b"), (2, 7, "c")]), {7: "Parlante 1", 3: "Parlante 2"})
-        wav = np.zeros(SR * 30, dtype=np.float32)
+        wav = np.ones(SR * 30, dtype=np.float32)
         runs = [(0.0, 5.0, 0), (5.0, 8.0, 0), (9.0, 12.0, 1), (13.0, 14.0, 0)]
         fake = FakeBackend(texts=["uno", "due", "tre", "quattro"])
         turns = diarize.transcribe_turns(fake, wav, runs, "Italian")

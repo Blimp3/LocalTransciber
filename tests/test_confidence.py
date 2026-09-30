@@ -2,6 +2,8 @@
 
 mlx is replaced by numpy (same function names for what the recorder uses) and the model by a scripted fake, so this
 runs anywhere. The real model is checked by comparing transcripts with and without recording (see the session notes)."""
+import contextlib
+import io
 import os
 import sys
 import types
@@ -192,7 +194,7 @@ class ConfidenceTests(unittest.TestCase):
                 return ["uno", "", "tre"][:len(pieces)]
 
         paragraphs = []
-        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.zeros(1), 0.0), (np.zeros(2), 20.0), (np.zeros(3), 40.0)]):
+        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.ones(1), 0.0), (np.ones(2), 20.0), (np.ones(3), 40.0)]):
             text = pipeline.transcribe_wav(Stub(), None, "Italian", paragraphs=paragraphs)
         self.assertEqual(text.split("\n\n"), ["[00:00:00] uno", "[00:00:40] tre"])
         self.assertEqual([(p["text"], p["offset"], p["tokens"]) for p in paragraphs],
@@ -210,7 +212,7 @@ class ConfidenceTests(unittest.TestCase):
 
         records = []
         with mock.patch.object(pipeline, "strip_context_echo", lambda t, c: "ciao"):
-            pipeline.transcribe_pieces(Stub(), [np.zeros(1)], "Italian", "Mario Rossi", records=records)
+            pipeline.transcribe_pieces(Stub(), [np.ones(1)], "Italian", "Mario Rossi", records=records)
         self.assertFalse(records[0]["aligned"])
 
 
@@ -265,12 +267,12 @@ class CacheReuseTests(unittest.TestCase):
         be.transcribe([a, b], "Italian")  # the batched path keeps nothing, and must not leave the old cache
         self.assertIsNone(be._kept)
 
-    def run_wav(self, batch):
+    def run_wav(self, batch, pieces=None):
         """transcribe_wav over 3 pieces; batch 1 = one piece at a time (cache reuse), batch 2 = the old order."""
         from localtranscribe import pipeline
 
         be, calls = self.make(batch), []
-        pieces = self.pieces(5, 6, 7)
+        pieces = pieces or self.pieces(5, 6, 7)
         paragraphs = []
         with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(p, 20.0 * i) for i, p in enumerate(pieces)]):
             text = pipeline.transcribe_wav(be, None, "Italian", paragraphs=paragraphs,
@@ -287,6 +289,22 @@ class CacheReuseTests(unittest.TestCase):
         self.assertTrue(any("cands" in w for p in paras for w in p["words"]))  # the comparison is not vacuous
         self.assertEqual(be.model.encodes, 3)  # the audio was encoded once per piece, for the transcription only
         self.assertEqual(be2.model.encodes, 3)  # batched decoding never encodes here: 3 fresh caches, one per piece
+
+    def test_silent_pieces_are_skipped_without_shifting_records_or_the_kept_cache(self):
+        pieces = [self.pieces(5)[0], np.zeros(8, np.float32), np.zeros(9, np.float32), self.pieces(7)[0]]
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            be, text, paras, calls = self.run_wav(1, pieces)
+        with contextlib.redirect_stdout(io.StringIO()):
+            be2, text2, paras2, calls2 = self.run_wav(2, pieces)
+        self.assertEqual([p["offset"] for p in paras], [0.0, 60.0])
+        self.assertEqual(text.split("\n\n"), [f"[00:00:00] {paras[0]['text']}", f"[00:01:00] {paras[1]['text']}"])
+        self.assertEqual((text, paras), (text2, paras2))
+        self.assertEqual(calls, [(1, 4), (2, 4), (3, 4), (4, 4)])
+        self.assertTrue(any("cands" in w for p in paras for w in p["words"]))
+        self.assertEqual(be.model.encodes, 2)  # the silent pieces were never encoded; the others reused their cache
+        self.assertEqual(be2.model.encodes, 2)
+        self.assertEqual(out.getvalue().count("[note]"), 1)  # one note per recording, not one per piece
+        self.assertIn("(2 pieces below", out.getvalue())
 
 
 def tk(text, p=1.0):
@@ -325,7 +343,7 @@ class WordsInSidecarTests(unittest.TestCase):
                 return ["ciao mondo"]
 
         paragraphs = []
-        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.zeros(1), 0.0)]):
+        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.ones(1), 0.0)]):
             pipeline.transcribe_wav(Stub(), None, "Italian", paragraphs=paragraphs)
         return paragraphs[0]["words"]
 
@@ -380,7 +398,7 @@ class CandidatesTests(unittest.TestCase):
 
             Stub.word_continuations = wc
         paragraphs = []
-        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.zeros(1), 0.0)]):
+        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.ones(1), 0.0)]):
             pipeline.transcribe_wav(Stub(), None, "Italian", paragraphs=paragraphs)
         return paragraphs[0]["words"], calls
 
@@ -457,7 +475,7 @@ class CandidatesTests(unittest.TestCase):
                 return [[([], [cont_p], 7) for _ in alts] for _, alts in requests]
 
         paragraphs = []
-        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.zeros(1), float(i)) for i in range(npieces)]):
+        with mock.patch.object(pipeline, "split_wav", lambda wav, secs: [(np.ones(1), float(i)) for i in range(npieces)]):
             text = pipeline.transcribe_wav(Stub(), None, "Italian", paragraphs=paragraphs)
         return paragraphs, text, calls
 

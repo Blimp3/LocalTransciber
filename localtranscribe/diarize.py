@@ -14,7 +14,7 @@ import sys
 import numpy as np
 
 from . import config
-from .pipeline import transcribe_pieces
+from .pipeline import say_skipped, transcribe_pieces
 from .textutil import fmt_time, split_audio_into_chunks  # noqa: F401 (fmt_time is re-exported)
 
 SR = config.SAMPLE_RATE
@@ -209,9 +209,11 @@ def transcribe_turns(backend, wav, runs, language, context="", max_piece=20.0, p
         for chunk, _ in split_audio_into_chunks(seg, SR, max_chunk_sec=max_piece):
             pieces.append(chunk)
             owner.append(k)
+    skipped = []
     results = transcribe_pieces(backend, pieces, language, context, progress,
-                                partial=(lambda rs: partial(_merge_turns(runs, owner, rs))) if partial else None
-                                ) if pieces else []
+                                partial=(lambda rs: partial(_merge_turns(runs, owner, rs))) if partial else None,
+                                skipped=skipped) if pieces else []
+    say_skipped(skipped)
     return _merge_turns(runs, owner, results)
 
 

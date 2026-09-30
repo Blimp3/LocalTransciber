@@ -105,6 +105,14 @@ def split_audio_into_chunks(
     return padded
 
 
+def is_silent(piece, sr, dbfs):
+    """True when no 100 ms of `piece` reaches `dbfs` (RMS level in dBFS): nothing a speech model could hear."""
+    n = max(1, sr // 10)
+    x = np.asarray(piece, dtype=np.float64)
+    x = np.pad(x, (0, -len(x) % n))
+    return not x.size or float(np.sqrt(np.mean(np.square(x.reshape(-1, n)), axis=1)).max()) < 10 ** (dbfs / 20)
+
+
 def detect_and_fix_repetitions(text, threshold=20):
     """Collapse runaway repetitions ("ahahahah..." x100) that ASR decoders sometimes emit."""
 

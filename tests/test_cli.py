@@ -120,6 +120,25 @@ class CliTest(unittest.TestCase):
             code = cli.main([wav, "--device", "cpu", "--model", "light", "--batch-size", "1", "--confidence"])
         return code, out.getvalue()
 
+    def test_silent_recording_writes_nothing_and_never_calls_the_model(self):
+        wav, calls = self.p("a.wav"), []
+
+        class B(Backend):
+            batch_size = 1
+
+            def transcribe(self, pieces, language, context=""):
+                calls.append(len(pieces))
+                return ["Grazie a tutti."] * len(pieces)
+
+        with mock.patch.object(cli, "_load_backend", lambda *a: B()), \
+                mock.patch.object(audio, "load_audio", lambda p: np.zeros(16000 * 30, "float32")), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            code = cli.main([wav, "--device", "cpu", "--model", "light", "--batch-size", "1"])
+        self.assertEqual((code, calls), (1, []))
+        self.assertEqual(sorted(os.listdir(self.d)), ["a.wav"])
+        self.assertIn("30 s had no sound at all", out.getvalue())
+        self.assertIn("no speech was recognised", out.getvalue())
+
     def test_sidecar_written_with_confidence(self):
         wav, side = self.p("a.wav"), self.p("a.review.json")
         self._conf_run(wav)
@@ -332,7 +351,7 @@ class CliTest(unittest.TestCase):
 
         runs = [(0.0, 2.0, 0), (3.0, 5.0, 1), (6.0, 8.0, 1), (9.0, 11.0, 0), (12.0, 14.0, 0), (15.0, 17.0, 1)]
         seen = []
-        turns = diarize.transcribe_turns(B(), np.zeros(16000 * 20, np.float32), runs, "Italian",
+        turns = diarize.transcribe_turns(B(), np.ones(16000 * 20, np.float32), runs, "Italian",
                                          partial=lambda t: seen.append(t))
         self.assertEqual(seen, [[(0.0, 0, "uno"), (3.0, 1, "due tre"), (9.0, 0, "quattro")], turns])
         self.assertEqual(turns, [(0.0, 0, "uno"), (3.0, 1, "due tre"), (9.0, 0, "quattro cinque"), (15.0, 1, "sei")])
@@ -345,7 +364,7 @@ class CliTest(unittest.TestCase):
             def transcribe(self, pieces, language, context):
                 return [f"t{len(p)}" for p in pieces]
 
-        chunks = [(np.zeros(n), n * 20.0) for n in range(1, 7)]
+        chunks = [(np.ones(n), n * 20.0) for n in range(1, 7)]
         seen = []
         with mock.patch.object(pipeline, "split_wav", lambda *a: chunks):
             text = pipeline.transcribe_wav(B(), None, "Italian", partial=seen.append)
@@ -590,7 +609,7 @@ class CliTest(unittest.TestCase):
             def word_continuations(self, *a):
                 raise AssertionError("no words, no candidates")
 
-        chunks = [(np.zeros(n), n * 20.0) for n in range(1, 4)]
+        chunks = [(np.ones(n), n * 20.0) for n in range(1, 4)]
         seen, paragraphs = [], []
         with mock.patch.object(pipeline, "split_wav", lambda *a: chunks):
             text = pipeline.transcribe_wav(B(), None, "Italian", paragraphs=paragraphs, partial=seen.append)

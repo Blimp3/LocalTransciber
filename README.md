@@ -132,8 +132,10 @@ A transcript can take an hour to make and longer to correct, so the program neve
   old transcript is not touched. Tip: close the transcript in your editor before you transcribe the same recording
   again or save from the review page.
 - **If the model returns no text at all**, nothing is written: the program says that no speech was recognised and
-  leaves any existing transcript alone. (On pure silence the speech model can still invent a short phrase; skipping
-  silence is on the [roadmap](ROADMAP.md).)
+  leaves any existing transcript alone. A piece of the recording (about 20 s) with no sound at all, such as digital
+  silence, is not sent to the speech model, which would only invent a phrase there ("Grazie a tutti."); the program
+  says how many seconds it skipped. A pause with background noise still reaches the model, which can still invent a
+  short phrase there.
 - **The review page** keeps a `.bak` copy of the file on disk if it changed after the page was opened (a new
   transcription, a second browser tab) before it saves your version. If saving fails, your edits stay on the page
   and it says why.
@@ -243,6 +245,11 @@ recording -> PyAV decoder (16 kHz mono) -> cut at quiet moments into ~20 s piece
 - `localtranscribe/textutil.py` cuts the audio and cleans the text identically on every platform. The chunker is
   adapted from `qwen-asr` with two changes: audio up to 25 s stays in one piece, and no cut leaves a final piece
   shorter than 3 s (the model used to invent a word on half-second scraps, raising WER from 2.6 % to 3.1 %).
+- `pipeline.transcribe_pieces` skips a piece in which no tenth of a second is louder than -60 dBFS (`SILENCE_DBFS` in
+  `config.py`; `None` turns it off), for every backend, with `--speakers` and in `benchmark/bench.py`
+  (`--no-silence-gate` for A/B runs). Measured without a model: the quietest of 1,930 speech pieces (FLEURS,
+  VoxPopuli, and 12 speeches also after G.711 and Opus 12 kbit/s) reaches -30 dBFS, and digital silence after those
+  codecs stays at -81 dBFS or lower.
 - `localtranscribe/precheck.py` is the hardware check; `devices.py` applies the same rules, so `--model auto` and the
   check always agree. `config.py` holds every model name and threshold.
 - `--context` becomes the model's system prompt on both backends.
@@ -270,7 +277,8 @@ then `PYTHONPATH=. .venv/bin/python -m localtranscribe file.m4a`.
 
 The review page and the AI suggestions are done, measured on clips they were not tuned on, and offered from the
 double-click launcher. Next: measure on real calls and lectures, reach more mistakes with fewer false alarms, and
-skip silent stretches before they reach the model. Details in [ROADMAP.md](ROADMAP.md).
+evaluate trimming pauses inside pieces (pieces with no sound at all are already skipped). Details in
+[ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 

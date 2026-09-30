@@ -4,7 +4,7 @@ from typing import Callable, List, Optional, Tuple
 import numpy as np
 
 from . import config
-from .textutil import fmt_time, group_words, split_audio_into_chunks, strip_context_echo
+from .textutil import fmt_time, group_words, is_silent, split_audio_into_chunks, strip_context_echo
 
 SR = config.SAMPLE_RATE
 
@@ -22,26 +22,47 @@ def transcribe_pieces(
     progress: Optional[Callable[[int, int], None]] = None,
     records: Optional[list] = None,
     partial: Optional[Callable[[List[str]], None]] = None,
+    skipped: Optional[list] = None,
 ) -> List[str]:
     """One cleaned text per piece (context echo removed). Runs in slices of a few batches so that
-    `progress(done, total)` can be reported; slicing on batch boundaries keeps the batches, and
-    therefore the results, the same as one big call. With `records` (a list) and a backend that recorded
+    `progress(done, total)` can be reported; slicing on batch boundaries keeps the batches the same as one big
+    call, except that a skipped piece leaves a smaller batch in its slice. With `records` (a list) and a backend that recorded
     confidence, one {"aligned", "tokens"} per returned text is appended to it. `partial(texts_so_far)` is called after
-    each slice."""
+    each slice. A piece with nothing audible (config.SILENCE_DBFS) never reaches the backend: its text is "", its record
+    {"aligned": False, "tokens": []}, and its length in seconds is appended to `skipped` (a list), if given."""
     texts: List[str] = []
     step = max(1, backend.batch_size) * 4
+    dbfs = config.SILENCE_DBFS  # read at call time: bench.py --no-silence-gate and the tests set it to None
     for i in range(0, len(pieces), step):
-        raw = backend.transcribe(pieces[i:i + step], language, context)
+        group = pieces[i:i + step]
+        keep = [k for k, p in enumerate(group) if dbfs is None or not is_silent(p, SR, dbfs)]
+        raw = [""] * len(group)
+        recs = [{"aligned": False, "tokens": []} for _ in group]
+        if keep:  # a backend is never called with no pieces
+            for k, t in zip(keep, backend.transcribe([group[k] for k in keep], language, context)):
+                raw[k] = t
+            if records is not None:
+                for k, r in zip(keep, backend.last_records):
+                    recs[k] = r
+        if skipped is not None:
+            skipped.extend(len(p) / SR for k, p in enumerate(group) if k not in keep)
         cleaned = [strip_context_echo(t, context) for t in raw]
         texts.extend(cleaned)
         if records is not None:
-            records.extend(dict(r, aligned=r["aligned"] and c == t)
-                           for r, t, c in zip(backend.last_records, raw, cleaned))
+            records.extend(dict(r, aligned=r["aligned"] and c == t) for r, t, c in zip(recs, raw, cleaned))
         if partial:
             partial(texts)
         if progress:
             progress(len(texts), len(pieces))
     return texts
+
+
+def say_skipped(skipped):
+    """One note for the pieces transcribe_pieces left out as silence."""
+    if skipped:
+        n = len(skipped)
+        print(f"  [note] {sum(skipped):.0f} s had no sound at all ({n} piece{'s' if n > 1 else ''} below "
+              f"{config.SILENCE_DBFS} dBFS) and were not transcribed.")
 
 
 def add_candidates(backend, piece, language, context, para):
@@ -92,6 +113,7 @@ def transcribe_wav(backend, wav, language, context="", chunk_seconds=config.CHUN
     (see add_candidates) when the backend has word_continuations. `corrector(para)`, if given, then adds "suggest"
     to words (correct.Corrector); it never changes the text. `partial(text_so_far)` is called after each slice."""
     records = [] if paragraphs is not None else None
+    skipped = []
     chunks = split_wav(wav, chunk_seconds)
     cands_ok = True
 
@@ -120,7 +142,7 @@ def transcribe_wav(backend, wav, language, context="", chunk_seconds=config.CHUN
         # reuses it (a later piece would replace it).
         texts = []
         for piece, o in chunks:
-            texts += transcribe_pieces(backend, [piece], language, context, records=records)
+            texts += transcribe_pieces(backend, [piece], language, context, records=records, skipped=skipped)
             if partial:
                 partial(_join_paragraphs(texts, chunks))
             add_paragraph(piece, texts[-1], o, records[-1])
@@ -128,8 +150,10 @@ def transcribe_wav(backend, wav, language, context="", chunk_seconds=config.CHUN
                 progress(len(texts), len(chunks))
     else:
         texts = transcribe_pieces(backend, [p for p, _ in chunks], language, context, progress, records,
-                                  (lambda ts: partial(_join_paragraphs(ts, chunks))) if partial else None)
+                                  (lambda ts: partial(_join_paragraphs(ts, chunks))) if partial else None,
+                                  skipped=skipped)
         if paragraphs is not None:
             for (piece, o), t, r in zip(chunks, texts, records):
                 add_paragraph(piece, t, o, r)
+    say_skipped(skipped)
     return _join_paragraphs(texts, chunks)

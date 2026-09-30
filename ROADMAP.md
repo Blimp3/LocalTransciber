@@ -43,6 +43,10 @@ review and correction on top without changing how it is used.
   kept in `<name>.partial.md` while a long recording runs, a `.md` that cannot be replaced (open in another program)
   is saved as `<name>.new-<date>.md`, an empty result writes nothing, and the review page keeps a `.bak` copy when
   the file changed on disk.
+- Pieces with no sound at all (no tenth of a second louder than -60 dBFS, such as digital silence) are no longer sent
+  to the speech model: on such pieces every model tested invented a phrase ("Non è vero.", "Grazie a tutti."). The
+  program says how many seconds it skipped. Checked without a model on 1,930 speech pieces (FLEURS, VoxPopuli, also
+  after phone and Opus codecs): the quietest is 30 dB above the limit.
 
 ## Next: better suggestions
 
@@ -57,8 +61,10 @@ review and correction on top without changing how it is used.
 
 - **Whisper as an alternative backend**, A/B-tested against Qwen3-ASR on real phone calls and lecture recordings
   rather than only on FLEURS read speech. The backend interface already allows it.
-- **Skipping silence before chunking**, to cut hallucinations and speed things up: both models invent a short phrase
-  on a piece that is only silence.
+- **Trimming pauses inside pieces** (voice activity detection before cutting). Skipping silent pieces only catches
+  pieces with no sound at all: on a test set with 2-15 s pauses inserted into 12 speeches, 94 % of the pause time lies
+  inside pieces that also hold speech, and a real room is louder than the limit (VoxPopuli's background is around
+  -42 dBFS), so those pauses still reach the model.
 - **Optional speech enhancement (denoising) before transcription**, enabled only where measurements show it helps
   (very noisy recordings); on clean audio it tends to hurt.
 
