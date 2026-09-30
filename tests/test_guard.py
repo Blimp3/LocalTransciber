@@ -1,7 +1,10 @@
 """The Bend checker binary and its Python wrapper (localtranscribe/guard.py).
 
-Binary tests need bin/guard-macos-arm64 (build it with build_guard.sh) and are skipped without it."""
+Binary tests need the checker for this platform (bin/guard-macos-arm64 from build_guard.sh, or
+bin/guard-windows-x64.exe from build_guard_windows.sh) and are skipped without it."""
 import os
+import contextlib
+import io
 import random
 import subprocess
 import sys
@@ -23,13 +26,16 @@ def expected(p):
             for w, f, cs, q in zip(p["words"], p["flagged"], p["cands"], p["proposal"])]
 
 
-@unittest.skipUnless(guard.available(), "bin/guard-macos-arm64 is not built (run build_guard.sh)")
+@unittest.skipUnless(guard.available(), "no checker binary for this platform (run build_guard.sh or build_guard_windows.sh)")
 class TestGuardBinary(unittest.TestCase):
     def run_cli(self, text):
-        with tempfile.NamedTemporaryFile("w", suffix=".txt") as f:
-            f.write(text)
-            f.flush()
-            return subprocess.run([guard.BINARY, f.name], capture_output=True, text=True, timeout=30)
+        fd, path = tempfile.mkstemp(suffix=".txt")  # closed before the run: Windows cannot reopen an open temp file
+        try:
+            with os.fdopen(fd, "w", newline="\n") as f:
+                f.write(text)
+            return subprocess.run([guard.BINARY, path], capture_output=True, text=True, timeout=30)
+        finally:
+            os.unlink(path)
 
     def test_protocol_example(self):
         r = self.run_cli("1 0 -;2 1 7,8;3 1 9|5 8 4\n")
@@ -125,12 +131,67 @@ class TestGuardFallback(unittest.TestCase):
             self.assertIsNone(guard.check([p]))
             self.assertEqual(guard.check([]), [])
 
+
+# A stand-in for the checker: a Python script run through sys.executable and a tiny .cmd/.sh launcher (the
+# checker is called as `BINARY <file>`), so it works on Windows and macOS. It prints whatever FAKE_OUT holds and
+# exits with FAKE_EXIT, so each test controls exactly what "the binary" answers.
+FAKE = "import os, sys\nsys.stdout.write(os.environ['FAKE_OUT'])\nsys.exit(int(os.environ.get('FAKE_EXIT', '0')))\n"
+
+
+class TestPythonRecheck(unittest.TestCase):
+    def check_with_fake(self, out, ps, code=0):
+        """Run guard.check() against a fake binary that prints `out` and exits with `code`; returns (result, stderr text)."""
+        with tempfile.TemporaryDirectory() as d:
+            script = os.path.join(d, "fake_guard.py")
+            with open(script, "w") as f:
+                f.write(FAKE)
+            if sys.platform == "win32":
+                launcher, text = os.path.join(d, "fake_guard.cmd"), f'@"{sys.executable}" "{script}"\r\n'
+            else:
+                launcher, text = os.path.join(d, "fake_guard.sh"), f'#!/bin/sh\nexec "{sys.executable}" "{script}"\n'
+            with open(launcher, "w", newline="") as f:
+                f.write(text)
+            os.chmod(launcher, 0o755)
+            err = io.StringIO()
+            with mock.patch.object(guard, "available", return_value=True), \
+                    mock.patch.object(guard, "BINARY", launcher), \
+                    mock.patch.dict(os.environ, {"FAKE_OUT": out, "FAKE_EXIT": str(code)}), \
+                    contextlib.redirect_stderr(err):
+                return guard.check(ps), err.getvalue()
+
     def test_none_when_the_binary_fails(self):
-        p = para(["a"], [True], [["b"]], ["b"])
-        with mock.patch.object(guard, "available", return_value=True):
-            for binary in ["/nonexistent/guard", "/usr/bin/false", "/bin/echo"]:
-                with mock.patch.object(guard, "BINARY", binary):
-                    self.assertIsNone(guard.check([p]), binary)
+        p = para(["a"], [True], [["b"]], ["b"])  # ids: a=1 b=2, so the correct answer is "2\n"
+        missing = os.path.join(tempfile.gettempdir(), "no_such_dir_for_guard", "guard")
+        with mock.patch.object(guard, "available", return_value=True), mock.patch.object(guard, "BINARY", missing):
+            self.assertIsNone(guard.check([p]))  # binary does not exist
+        self.assertIsNone(self.check_with_fake("2\n", [p], code=3)[0])  # non-zero exit
+        self.assertIsNone(self.check_with_fake("2 ", [p])[0])  # no trailing newline (a valid answer once cut)
+        self.assertIsNone(self.check_with_fake("2\n2\n", [p])[0])  # wrong number of lines
+
+    # Ids are numbered per paragraph in order of first appearance (see guard._encode).
+    def test_wrong_answer_on_an_unflagged_slot_fails_closed(self):
+        p = para(["a", "b"], [True, False], [["x"], ["y"]], ["x", "y"])
+        # ids: a=1 x=2 b=3 y=4. Correct answer is "2 3"; the fake applies the proposal y on the unflagged slot.
+        res, err = self.check_with_fake("2 4\n", [p])
+        self.assertIsNone(res)
+        self.assertEqual(err, "[note] the checker's answer failed the Python re-check; no suggestions\n")
+
+    def test_missing_a_legal_suggestion_is_also_a_disagreement(self):
+        p = para(["a"], [True], [["x"]], ["x"])
+        res, err = self.check_with_fake("1\n", [p])
+        self.assertIsNone(res)
+        self.assertEqual(err.count("\n"), 1)  # exactly one line
+
+    def test_correct_answer_passes(self):
+        p = para(["a", "b"], [True, False], [["x"], ["y"]], ["x", "y"])
+        res, err = self.check_with_fake("2 3\n", [p])
+        self.assertEqual(res, [["x", "b"]])
+        self.assertEqual(err, "")
+
+    def test_expected_rules(self):
+        p = para(["a", "b", "c"], [True, True, False], [["x"], ["y"], ["z"]], ["x", "zzz", "z", "extra"])
+        self.assertEqual(guard._expected(p), ["x", "b", "c"])
+        self.assertEqual(guard._expected(dict(p, proposal=["x"])), ["x", "b", "c"])  # missing proposal keeps the word
 
 
 if __name__ == "__main__":

@@ -27,7 +27,9 @@ review and correction on top without changing how it is used.
      transcription runs.
   3. **A rule checker accepts or rejects each choice**: only flagged words change, only to one of their candidates,
      no word is added or removed, a rejected choice leaves the word as it was. The rules (`LAWS.bend`) are proven in
-     [Bend](https://github.com/bendlang/bend) (`PROOF.bend`) and the checker runs as a native binary.
+     [Bend](https://github.com/bendlang/bend) (`PROOF.bend`) and the checker runs as a native binary, prebuilt
+     for Apple Silicon and for Windows x64. Python re-checks the binary's answer with an independent implementation
+     of the same rules; any disagreement means no suggestions.
   4. **You have the final say**: the review page highlights each suggestion; nothing is applied until you accept it
      and save.
   Tuned on 100 FLEURS clips (12 suggestions, 5 fixes, 1 new mistake) and checked unchanged on 200 other clips: 25
@@ -61,7 +63,7 @@ review and correction on top without changing how it is used.
 
 ## Later
 
-- Windows: the rule checker as a prebuilt binary, and confidence recording on the PyTorch path.
+- Windows: confidence recording on the PyTorch path.
 - Confidence recording together with `--speakers`.
 - Idea: word-level timestamps from the Qwen3 forced aligner (mlx-audio already includes it), so the review page can
   jump to, or play, exactly one word. It needs a second model download and more memory on 8 GB Macs. Not for

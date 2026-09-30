@@ -282,6 +282,19 @@ is the checker, `PROOF.bend` proves that the checker obeys every rule, and `guar
 command-line wrapper that Python calls. If you touch any of them, run `bend PROOF.bend` (it must print
 `ALL PROOFS CHECK`), then `bash build_guard.sh`, which rebuilds `bin/guard-macos-arm64` only when the proofs pass.
 
+The checker's answer is double-checked at run time by an independent Python implementation of the same four rules
+(`localtranscribe/guard.py`); any disagreement means no suggestions (the proof stays the specification).
+
+Windows checker (maintainers only; `bin/guard-windows-x64.exe` is committed like the Mac one). Bend 2 does not support
+Windows, so this is an unofficial bridge: `build_guard_windows.sh` runs the compiler cut out of the official Linux
+release on Bun, with a small path preload and POSIX shims in `win/` (the proofs and the generated C are never edited).
+Get the pinned tools with `BEND_TOOLCHAIN=<folder> bash win/fetch_toolchain.sh` (Bun 1.4.2, zig 0.16.0, Bend 2.0.32,
+all sha256-checked), then run `BEND_TOOLCHAIN=<folder> bash build_guard_windows.sh` from Git Bash. It needs a Python 3
+on `PATH` (or `PYTHON=...`). `win/compat/abi_fix.h` works around a clang `musttail` bug on Windows x64
+(`win/compat/musttail_repro.c` reproduces it).
+Exe sha256 `913dcf5362f71805db9faf02885aaad1d3d34ba924714cae5bf404515b3bc219`: rebuild with `build_guard_windows.sh`
+(tools: `win/fetch_toolchain.sh`) and compare.
+
 ## Troubleshooting
 
 - **"has not been downloaded yet"**: run the setup script again while online.
