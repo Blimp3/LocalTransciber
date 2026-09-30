@@ -51,7 +51,7 @@ review and correction on top without changing how it is used.
   (Qwen3-ASR 1.7B: word error rate 7.2 % to 6.7 %); every other test set is unchanged. Also measured and not
   adopted: 0.5 s or 1 s of silence in front of every piece, meant to save the first words of a piece that starts
   right on speech. On 1,177 VoxPopuli clips it recovers about as many first words as it loses and shifts the
-  decoding of the rest (word error rate 17.1 % to 17.3 %); on FLEURS it changes nothing.
+  decoding of the rest (word error rate 17.1 % to 17.3 %); the held-out FLEURS clips are unchanged.
 
 ## Next: better suggestions
 
