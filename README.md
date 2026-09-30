@@ -260,8 +260,9 @@ bash mac_selftest.sh                                                       # Mac
 On Windows use `.venv\Scripts\python.exe` and `transcribe.bat`. The self-test report contains no personal data (home
 folder, user name and host name are removed); it is what the Mac rows above come from.
 
-Linux (manual): `uv venv --python 3.11 .venv`, then `uv pip install --index-strategy unsafe-best-match -r
-requirements-windows.txt` (NVIDIA) or `-r requirements-cpu.txt`, then `PYTHONPATH=. .venv/bin/python -m localtranscribe file.m4a`.
+Linux (manual): `uv venv --python 3.11 .venv`, then `uv pip install --torch-backend cu128 -r requirements-windows.txt`
+(NVIDIA) or `uv pip install --torch-backend cpu -r requirements-cpu.txt` (`--torch-backend` needs uv 0.7.14 or newer),
+then `PYTHONPATH=. .venv/bin/python -m localtranscribe file.m4a`.
 
 ## Roadmap
 

@@ -44,6 +44,15 @@ if errorlevel 1 goto uv_failed
 :have_uv
 for /f "delims=" %%v in ('uv --version') do echo Using %%v
 
+rem ---- --torch-backend needs uv 0.7.14 or newer: check first, before any Python or environment work; try one self update, else stop with a clear message ----
+uv pip install --help | findstr /c:"--torch-backend" >nul
+if not errorlevel 1 goto uv_ok
+echo Your "uv" is too old ^(it lacks --torch-backend^). Trying "uv self update"...
+uv self update
+uv pip install --help | findstr /c:"--torch-backend" >nul
+if errorlevel 1 goto uv_old
+:uv_ok
+
 rem ---- hardware check: standard library only, so it runs with the bare uv Python before any big download ----
 set "BASEPY="
 for /f "delims=" %%p in ('uv python find 3.11 2^>nul') do set "BASEPY=%%p"
@@ -63,7 +72,9 @@ for /f "delims=" %%v in ('"%BASEPY%" -m localtranscribe.precheck --print models'
 if not defined REQ goto precheck_failed
 if not defined MODELS set "MODELS=auto"
 set "KIND=NVIDIA GPU"
+set "BACKEND=cu128"
 if /i not "%REQ%"=="requirements-windows.txt" set "KIND=CPU only"
+if /i not "%REQ%"=="requirements-windows.txt" set "BACKEND=cpu"
 echo.
 echo Install type: %KIND%  -^>  %REQ%
 echo.
@@ -76,7 +87,7 @@ if errorlevel 1 goto venv_failed
 :have_venv
 
 echo Installing packages ^(this takes a few minutes the first time^)...
-uv pip install --python ".venv\Scripts\python.exe" --index-strategy unsafe-best-match -r "%REQ%"
+uv pip install --python ".venv\Scripts\python.exe" --torch-backend %BACKEND% -r "%REQ%"
 if errorlevel 1 goto pip_failed
 
 rem ---- models ---------------------------------------------------------------------------
@@ -98,6 +109,13 @@ exit /b 0
 echo.
 echo Could not install uv automatically. Install it by hand from https://docs.astral.sh/uv/
 echo ^(for example:  winget install --id=astral-sh.uv -e^) and run this setup again.
+pause
+exit /b 1
+
+:uv_old
+echo.
+echo Your "uv" is too old for this setup ^(it needs uv 0.7.14 or newer^). Update it with  uv self update
+echo or  winget upgrade --id=astral-sh.uv  and run this setup again. Nothing was installed by this run.
 pause
 exit /b 1
 

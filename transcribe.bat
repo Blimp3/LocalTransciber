@@ -14,7 +14,7 @@ if not exist "%~dp0.venv\Scripts\python.exe" (
 if "%~1"=="" (
     echo Drag one or more audio/video files onto transcribe.bat to transcribe them to text.
     pause
-    exit /b
+    exit /b 1
 )
 "%~dp0.venv\Scripts\python.exe" -m localtranscribe %*
 pause

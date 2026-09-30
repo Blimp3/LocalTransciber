@@ -1,7 +1,8 @@
 # Any PC without an NVIDIA GPU (Windows/Linux): PyTorch, CPU-only build + the official qwen-asr package.
-# Installed by setup_windows.bat with:  uv pip install --index-strategy unsafe-best-match -r requirements-cpu.txt
---extra-index-url https://download.pytorch.org/whl/cpu
-
+# Installed by setup_windows.bat with:  uv pip install --python ".venv\Scripts\python.exe" --torch-backend cpu -r requirements-cpu.txt
+# Keep --torch-backend: without it uv would install the CUDA build of torch from PyPI on Linux.
+# The local version (+cpu) is part of the pin on purpose: a PC that has the CUDA build (2.11.0+cu128) is switched to
+# the CPU build when this file is installed again (setup_windows.bat cpu). A plain torch==2.11.0 would keep +cu128.
 torch==2.11.0+cpu
 qwen-asr==0.0.6
 transformers==4.57.6      # exact version required by qwen-asr 0.0.6
